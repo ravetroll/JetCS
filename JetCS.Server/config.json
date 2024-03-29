@@ -1,0 +1,8 @@
+﻿{
+  "Config": {
+    "DatabasePath": "C:\\temp",
+    "Provider": "Microsoft.ACE.OLEDB.16.0",
+    "ListenPort": 1549,
+    "CompressedMode":  true
+  }
+}
