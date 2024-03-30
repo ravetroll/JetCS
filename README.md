@@ -6,4 +6,4 @@ The Jet database system utilised in Microsoft Access has extensive functionality
 There are large numbers of Jet databases that could be served via a client server arrangement rather than over a file share.  The file can be made available by simply dropping it into the data path of JetCS and configuring some login credentials.
 
 ## What next
-A real benefit would be have have an ODBC driver that can communicate with the server.  This would make it possible to ODBC link the tables of existing access databases and allow those databases to continue to run without much apparent change to the users
+A real benefit would be have have an ODBC driver that can communicate with the server.  This would make it possible to ODBC link the tables of existing MS Access databases and allow those databases to continue to run without much apparent change to the users
