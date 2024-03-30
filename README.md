@@ -7,3 +7,7 @@ There are large numbers of Jet databases that could be served via a client serve
 
 ## What next
 A real benefit would be have have an ODBC driver that can communicate with the server.  This would make it possible to ODBC link the tables of existing MS Access databases and allow those databases to continue to run without much apparent change to the users
+
+## View the Wiki
+The Wiki will contain documentation on how it works and how to use it
+https://github.com/ravetroll/JetCS/wiki
