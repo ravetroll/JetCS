@@ -10,6 +10,12 @@ namespace JetCS.Common.Messaging
 {
     public class Command
     {
+        public Command()
+        {
+            CommandText = "NO COMMAND";
+            ConnectionString = string.Empty;
+        }    
+
         public Command(string connString, string commandText)
         {
 

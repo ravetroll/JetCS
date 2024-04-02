@@ -19,10 +19,13 @@ using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 using JetCS.Common.Helpers;
 using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
+using Topshelf;
+using Microsoft.Extensions.Logging;
+using Topshelf.Logging;
 
 namespace JetCS.Server
 {
-    public class Server: IDisposable
+    public class Server:  IDisposable
     {
         private TcpListener _listener;
         private CancellationTokenSource _cancellationTokenSource;
@@ -33,7 +36,9 @@ namespace JetCS.Server
         private SeedData seed;
         private JetCSDbContext db;
         private CommandDispatcher commandDispatcher;
-        private bool isRunning = false;
+        private bool isRunning = false;        
+        private static readonly LogWriter Log = HostLogger.Get<Server>();
+       
 
         public Server(Config config,IServiceProvider provider)
         {
@@ -43,45 +48,21 @@ namespace JetCS.Server
             this.commandDispatcher = serviceProvider.GetRequiredService<CommandDispatcher>();
             this.seed = serviceProvider.GetRequiredService<SeedData>();
             this.dbs = serviceProvider.GetRequiredService<Databases>();
-           
-
+            
         }
 
-        public void Start()
-        {
-            if (!isRunning)
-            {
-                db.Database.Migrate();
-                seed.SetDefault();
-                dbs.SyncDatabaseToFiles();
-                _cancellationTokenSource = new CancellationTokenSource();
-                _listener = new TcpListener(IPAddress.Loopback, 1549);
-                _listener.Start();
-                Console.WriteLine("Server started. Listening for connections...");
-                isRunning = true;
-                Task.Run(() => AcceptClientsAsync(_cancellationTokenSource.Token));
-            }
-        }
+       
 
         public void Reset()
         {
             if (!isRunning)
             {
                 db.Database.EnsureDeleted();
+                Log.Info("Server Reset");
             }
         }
 
-        public void Stop()
-        {
-            if (isRunning)
-            {
-                dbs.SyncDatabaseToFiles();
-                _cancellationTokenSource.Cancel();
-                _listener.Stop();
-                isRunning = false;
-                Console.WriteLine("Server stopped.");
-            }
-        }
+       
 
         public Databases Databases => dbs;
 
@@ -168,40 +149,110 @@ namespace JetCS.Server
             using (MemoryStream ms = new MemoryStream())
             {
                 // Receive response from server (optional)
-                StringBuilder responseData = new StringBuilder();
-                byte[] buffer = new byte[1024];
-                int bytesRead = 0;
-                bool moreAvailable = true;
+                //StringBuilder responseData = new StringBuilder();
                 int bytesReadSum = 0;
-                while (moreAvailable && (bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
-                {
-                   
-                    ms.Write(buffer, 0, bytesRead);
-                    bytesReadSum += bytesRead;
-                    moreAvailable = stream.DataAvailable;
-                }
-                
-                byte[] receivedData = ms.ToArray();
+                byte[] receivedData;
                 string dataReceived;
-                if (this.cfg.CompressedMode)
+                try
                 {
-                    dataReceived = CompressionTools.DecompressData(receivedData, bytesReadSum);
+                    byte[] buffer = new byte[1024];
+                    int bytesRead = 0;
+                    bool moreAvailable = true;
+                    
+                    while (moreAvailable && (bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                    {
 
-                }
-                else
+                        ms.Write(buffer, 0, bytesRead);
+                        bytesReadSum += bytesRead;
+                        moreAvailable = stream.DataAvailable;
+                    }
+                    receivedData = ms.ToArray();
+                } catch (Exception ex)
                 {
-                    dataReceived = Encoding.ASCII.GetString(receivedData);
+                    return new Command();
                 }
-                
-                Command cmd = Common.Serialization.Convert.DeSerializeCommand(dataReceived);
-               
-                return cmd;
+
+                try
+                {
+
+                    if (this.cfg.CompressedMode)
+                    {
+                        dataReceived = CompressionTools.DecompressData(receivedData, bytesReadSum);
+
+                    }
+                    else
+                    {
+                        dataReceived = Encoding.ASCII.GetString(receivedData);
+                    }
+                } catch (Exception ex)
+                {
+                    return new Command();
+                }
+                try
+                {
+                    Command cmd = Common.Serialization.Convert.DeSerializeCommand(dataReceived);
+
+                    return cmd;
+                }
+                catch (Exception ex)
+                {
+                    return new Command();
+                }
             }
         }
 
         public void Dispose()
         {
             if (this.isRunning) this.Stop();
+        }
+
+        public bool Start()
+        {
+            try
+            {
+                if (!isRunning)
+                {
+                    Log.Info("Beginning Server Startup");
+                    db.Database.Migrate();
+                    seed.SetDefault();
+                    dbs.SyncDatabaseToFiles();
+                    _cancellationTokenSource = new CancellationTokenSource();
+                    _listener = new TcpListener(IPAddress.Loopback, 1549);
+                    _listener.Start();
+                    Console.WriteLine("Server started. Listening for connections...");
+                    Task.Run(() => AcceptClientsAsync(_cancellationTokenSource.Token));
+                    Log.Info("Completing Server Startup");
+                    isRunning = true;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Error in Server Startup",ex);
+                return false;
+            }
+        }
+
+        public bool Stop()
+        {
+            try
+            {
+                if (isRunning)
+                {
+                    Log.Info("Beginning Server Stop");
+                    dbs.SyncDatabaseToFiles();
+                    _cancellationTokenSource.Cancel();
+                    _listener.Stop();
+                    isRunning = false;
+                    Log.Info("Completing Server Stop");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+               Log.Error("Error in Server Stop",ex);
+                return false;
+            }
         }
     }
 }

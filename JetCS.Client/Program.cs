@@ -38,7 +38,7 @@ try
         RunCommand(connStr, "REVOKE DATABASE TEST user1");
         RunCommand(connStr, "DROP LOGIN user1");
         RunCommand(connStr, "DROP DATABASE TEST");
-        Console.ReadLine();
+        //Console.ReadLine();
     }
 
 }

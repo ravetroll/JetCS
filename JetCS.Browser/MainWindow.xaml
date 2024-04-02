@@ -5,24 +5,31 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:JetCS.Browser"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow" Height="800" Width="1024">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="23*"/>
-            <ColumnDefinition Width="137*"/>
+            <ColumnDefinition Width="21*"/>
+            <ColumnDefinition Width="94*"/>
+            <ColumnDefinition Width="134*"/>
+            <ColumnDefinition Width="551*"/>
         </Grid.ColumnDefinitions>
 
 
 
-        <Label x:Name="lblServer" Content="Server" HorizontalAlignment="Left" Height="30" Margin="16,14,0,0" VerticalAlignment="Top" Width="53"/>
-        <ComboBox x:Name="cmbServer" HorizontalAlignment="Left" Height="26" Margin="69,19,0,0" VerticalAlignment="Top" Width="190" SelectionChanged="cmbServer_SelectionChanged" Grid.ColumnSpan="2">
+        <Label x:Name="lblServer" Content="Server" HorizontalAlignment="Left" Height="30" Margin="10,5,0,0" VerticalAlignment="Top" Width="53" Grid.ColumnSpan="2"/>
+        <ComboBox x:Name="cmbServer" HorizontalAlignment="Left" Height="26" Margin="41,9,0,0" VerticalAlignment="Top" Width="148" SelectionChanged="cmbServer_SelectionChanged" Grid.ColumnSpan="2" Grid.Column="1" IsEditable="True" KeyUp="cmbServer_KeyUp">
             <ListBoxItem ContentStringFormat="" Content="127.0.0.1"/>
         </ComboBox>
-        <TextBox x:Name="txtPort" HorizontalAlignment="Left" Height="25" Margin="198,19,0,0" TextWrapping="Wrap" Text="TextBox" VerticalAlignment="Top" Width="60" Grid.Column="1"/>
-        <Label x:Name="lblPort" Grid.Column="1" Content="Port" HorizontalAlignment="Left" Height="26" Margin="156,19,0,0" VerticalAlignment="Top" Width="39"/>
-        <Button x:Name="butConnect" Grid.Column="1" Content="Connect" HorizontalAlignment="Left" Height="26" Margin="267,19,0,0" VerticalAlignment="Top" Width="102" Click="butConnect_Click"/>
-        <Label Grid.Column="1" Content="Database" HorizontalAlignment="Left" Margin="418,19,0,0" VerticalAlignment="Top"/>
-        <ComboBox x:Name="cmbDatabase" Grid.Column="1" HorizontalAlignment="Left" Margin="482,22,0,0" VerticalAlignment="Top" Width="193"/>
+        <TextBox x:Name="txtPort" HorizontalAlignment="Left" Height="25" Margin="130,10,0,0" TextWrapping="Wrap" Text="1549" VerticalAlignment="Top" Width="60" Grid.Column="2" RenderTransformOrigin="0.94,1.036" Grid.ColumnSpan="2" TextChanged="txtPort_TextChanged" MaxLength="5" PreviewTextInput="txtPort_PreviewTextInput"/>
+        <Label x:Name="lblPort" Grid.Column="2" Content="Port" HorizontalAlignment="Left" Height="26" Margin="91,9,0,0" VerticalAlignment="Top" Width="39"/>
+        <Button x:Name="butConnect" Grid.Column="3" Content="Connect" HorizontalAlignment="Left" Height="26" Margin="593,14,0,0" VerticalAlignment="Top" Width="102" Click="butConnect_Click"/>
+        <Label Grid.Column="3" Content="Database" HorizontalAlignment="Left" Margin="303,105,0,0" VerticalAlignment="Top"/>
+        <ComboBox x:Name="cmbDatabase" Grid.Column="3" HorizontalAlignment="Left" Margin="402,101,0,0" VerticalAlignment="Top" Width="193"/>
+        <CheckBox Grid.Column="3" Content="Compressed" HorizontalAlignment="Left" Margin="498,20,0,0" VerticalAlignment="Top"/>
+        <Label x:Name="lblLogin" Grid.Column="3" Content="Login" HorizontalAlignment="Left" Margin="42,9,0,0" VerticalAlignment="Top"/>
+        <TextBox x:Name="txtLogin" Grid.Column="3" HorizontalAlignment="Left" Margin="81,10,0,0" TextWrapping="Wrap" Text="admin" VerticalAlignment="Top" Width="120" Height="25" MaxLength="255"/>
+        <Label Grid.Column="3" Content="Password" HorizontalAlignment="Left" Margin="220,7,0,0" VerticalAlignment="Top"/>
+        <PasswordBox x:Name="pwdPassword" Grid.Column="3" HorizontalAlignment="Left" Margin="284,10,0,0" VerticalAlignment="Top" Width="120" Height="25" MaxLength="255"/>
 
 
 

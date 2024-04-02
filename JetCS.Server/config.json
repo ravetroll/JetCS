@@ -3,6 +3,36 @@
     "DatabasePath": "C:\\temp",
     "Provider": "Microsoft.ACE.OLEDB.16.0",
     "ListenPort": 1549,
-    "CompressedMode":  true
+    "CompressedMode": true
+  },
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
+    "MinimumLevel": "Debug",
+    "WriteTo": [
+      { "Name": "Console" },
+      {
+        "Name": "File",
+        "Args": { "path": "Logs/log.txt" }
+      }
+    ],
+    "Enrich": [ "FromLogContext", "WithMachineName", "WithThreadId" ],
+    "Destructure": [
+     
+      {
+        "Name": "ToMaximumDepth",
+        "Args": { "maximumDestructuringDepth": 4 }
+      },
+      {
+        "Name": "ToMaximumStringLength",
+        "Args": { "maximumStringLength": 100 }
+      },
+      {
+        "Name": "ToMaximumCollectionCount",
+        "Args": { "maximumCollectionCount": 10 }
+      }
+    ],
+    "Properties": {
+      "Application": "JetCS.Server"
+    }
   }
 }

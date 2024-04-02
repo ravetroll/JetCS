@@ -17,7 +17,7 @@ namespace JetCS.Server.Commands
         public string Description => $"SQL {Name} Statement";
 
         
-        public string[] Identifiers => [$"{Name} ", "CREATE UNIQUE INDEX "];
+        public string[] Identifiers => [$"^{Name}", "^CREATE UNIQUE INDEX"];
         public CommandResult Execute(Command cmd, Databases databases)
         {
             return ExecuteNonQueryResult(Name, cmd, databases);

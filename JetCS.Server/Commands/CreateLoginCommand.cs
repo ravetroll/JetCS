@@ -24,7 +24,7 @@ namespace JetCS.Server.Commands
         public string Description => $"JetCS {Name} Statement; {Name} <login> <password> ADMIN";
 
        
-        public string[] Identifiers => [$"{Name} "];
+        public string[] Identifiers => [$"^{Name}"];
         public CommandResult Execute(Command cmd, Databases databases)
         {
 

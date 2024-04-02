@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace JetCS.Server
@@ -32,8 +33,9 @@ namespace JetCS.Server
 
 
         public CommandResult Dispatch(Command command, Databases databases) {
-            var matchingCommand = commands.FirstOrDefault(t => t.Key.Select(r=> ( command.CommandText.ToUpper().StartsWith(r))).Any(s=>s == true)).Value;
             
+            var matchingCommand = commands.FirstOrDefault(t => t.Key.Select(r => new Regex(r).IsMatch(command.CommandText.ToUpper())).Any(s => s == true)).Value;
+
             if (matchingCommand != null)
             {
                 return matchingCommand.Execute(command, databases);

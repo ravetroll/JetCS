@@ -17,7 +17,7 @@ namespace JetCS.Server.Commands
         public string Description => $"SQL {Name} Statement";
 
         
-        public string[] Identifiers => [$"{Name} ","PROCEDURE "];
+        public string[] Identifiers => [$"^{Name}","^PROCEDURE"];
         public CommandResult Execute(Command cmd, Databases databases)
         {
             return ExecuteNonQueryResult(Name, cmd, databases);

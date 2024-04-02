@@ -10,14 +10,14 @@ using System.Threading.Tasks;
 
 namespace JetCS.Server.Commands
 {
-    public class CreateViewCommand : CommandBase, ICommand
+    public class SelectIntoCommand : CommandBase, ICommand
     {
-        public string Name => "CREATE VIEW";
+        public string Name => "SELECT INTO";
 
         public string Description => $"SQL {Name} Statement";
 
-       
-        public string[] Identifiers => [$"^{Name}"];
+        
+        public string[] Identifiers => ["\\bSELECT\\s+.*\\s+INTO\\s+[\\w\\d]+\\s*"];
         public CommandResult Execute(Command cmd, Databases databases)
         {
             return ExecuteNonQueryResult(Name, cmd, databases);
