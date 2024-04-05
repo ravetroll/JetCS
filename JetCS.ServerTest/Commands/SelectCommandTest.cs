@@ -98,7 +98,7 @@ namespace JetCS.ServerTest.Commands
             cli = ServerSetup.BuildJetCSClient("TEST1", "127.0.0.1", "user1", "password", server.CompressedMode);
             cli.SendCommand("CREATE TABLE Table1 (field1 varchar, field2 int)");
             cli.SendCommand("INSERT INTO Table1 VALUES ('value1', 40)");
-            var result = cli.SendCommand("SELECT * FROM Table1");
+            var result = cli.SendCommand("SELECT *, Now() AS timenow FROM Table1");
             Assert.AreEqual("SELECT", result.CommandName);
             Assert.AreEqual(1,result.Result.Rows.Count);
         }

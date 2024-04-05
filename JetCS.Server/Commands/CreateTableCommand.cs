@@ -19,9 +19,9 @@ namespace JetCS.Server.Commands
 
         
         public string[] Identifiers => [$"^{Name}"];
-        public CommandResult Execute(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
         {
-            return ExecuteNonQueryResult(Name, cmd, databases);
+            return await ExecuteNonQueryResultAsync(Name, cmd, databases);
         }
     }
 }

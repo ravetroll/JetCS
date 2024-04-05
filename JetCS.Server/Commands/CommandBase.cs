@@ -13,7 +13,8 @@ namespace JetCS.Server.Commands
 {
     public abstract class CommandBase
     {
-        public CommandResult ExecuteNonQueryResult(string name, Command cmd, Databases dbs)
+        public bool DataChange { get; } = true;
+        public async Task<CommandResult> ExecuteNonQueryResultAsync(string name, Command cmd, Databases dbs)
         {
 
 
@@ -26,7 +27,7 @@ namespace JetCS.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth =dbs.LoginWithDatabase(csb.Database, csb.Login, csb.Password);
+            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password);
             if (!auth.Authenticated) {
                 return commandResult.SetErrorMessage(auth.StatusMessage);        
             }
@@ -43,13 +44,14 @@ namespace JetCS.Server.Commands
             }
             try
             {
+                dbs.EnterWriteLock(csb.Database);
                 using (OleDbConnection connection = new OleDbConnection(connectionString))
                 {
                     connection.Open();
 
                     using (OleDbCommand command = new OleDbCommand(cmd.CommandText, connection))
                     {
-                        commandResult.RecordCount = command.ExecuteNonQuery();
+                        commandResult.RecordCount = await command.ExecuteNonQueryAsync();
 
                     }
                 }
@@ -57,10 +59,14 @@ namespace JetCS.Server.Commands
             {
                 commandResult.ErrorMessage = ex.Message;
             }
+            finally
+            {
+                dbs.ExitWriteLock(csb.Database);
+            }
             return commandResult;
         }
 
-        public CommandResult ExecuteQueryResult(string name, Command cmd, Databases dbs)
+        public async Task<CommandResult> ExecuteQueryResultAsync(string name, Command cmd, Databases dbs)
         {
 
 
@@ -73,7 +79,7 @@ namespace JetCS.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = dbs.LoginWithDatabase(csb.Database, csb.Login, csb.Password);
+            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -92,6 +98,7 @@ namespace JetCS.Server.Commands
             }
             try
             {
+                dbs.EnterReadLock(csb.Database);
                 using (OleDbConnection connection = new OleDbConnection(connectionString))
                 {
                     connection.Open();
@@ -99,15 +106,33 @@ namespace JetCS.Server.Commands
                     using (OleDbCommand command = new OleDbCommand(cmd.CommandText, connection))
                     {
 
-                        using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
-                        {
-                            DataTable result = new DataTable();
-                            commandResult.RecordCount = adapter.Fill(result);
-                            // Adds a blank row so the columns can be serialized or we end up with an empty serialization string
-                            if (result.Rows.Count == 0) { result.Rows.Add(); }
-                            commandResult.Result = result;
+                        //using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
+                        //{
+                        //    DataTable result = new DataTable();
+                        //    commandResult.RecordCount = adapter.Fill(result);
+                        //    // Adds a blank row so the columns can be serialized or we end up with an empty serialization string
+                        //    if (result.Rows.Count == 0) { result.Rows.Add(); }
+                        //    commandResult.Result = result;
 
+                        //}
+                        DataTable dt = null;
+                        using (var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess))
+                        {
+
+                            DataTable schemaTable = await reader.GetSchemaTableAsync();
+                            dt = new DataTable();
+                            foreach (DataRow row in schemaTable.Rows)
+                                dt.Columns.Add(row.Field<string>("ColumnName"), row.Field<Type>("DataType"));
+
+
+                            while (await reader.ReadAsync())
+                            {
+                                DataRow dr = dt.Rows.Add();
+                                foreach (DataColumn col in dt.Columns)
+                                    dr[col.ColumnName] = reader[col.ColumnName];
+                            }
                         }
+                        commandResult.Result = dt;
 
                     }
                 }
@@ -116,6 +141,11 @@ namespace JetCS.Server.Commands
             {
                 commandResult.ErrorMessage = ex.Message;
             }
+            finally
+            {
+                dbs.ExitReadLock(csb.Database);
+            }
+
                         
             return commandResult;
         }

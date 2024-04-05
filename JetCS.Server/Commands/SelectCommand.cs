@@ -13,8 +13,8 @@ namespace JetCS.Server.Commands
     public class SelectCommand : CommandBase, ICommand
     {
 
-        CommandDispatcher dsp;
-      
+        public new bool DataChange { get; } = false;
+
         public string Name => "SELECT";
 
         public string Description => $"SQL {Name} Statement";
@@ -22,9 +22,9 @@ namespace JetCS.Server.Commands
        
         public string[] Identifiers => ["^(?!.*INTO).*SELECT.*$"];
 
-        public CommandResult Execute(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
         {
-            return ExecuteQueryResult(Name, cmd, databases);
+            return await ExecuteQueryResultAsync(Name, cmd, databases);
         }
     }
 }

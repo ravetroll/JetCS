@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using JetCS.Common.Messaging;
+using System.Collections.Concurrent;
 
 namespace JetCS.Server
 {
@@ -17,12 +18,15 @@ namespace JetCS.Server
        
         private readonly Config config;
         private readonly JetCSDbContext dbContext;
-       
+        
+        private static ConcurrentDictionary<string, ReaderWriterLockSlim> locks = new ConcurrentDictionary<string, ReaderWriterLockSlim>();
         
 
         public Databases(Config config, JetCSDbContext db) {
             this.config = config;  
             this.dbContext = db;
+            locks.TryAdd("", new ReaderWriterLockSlim());
+           
         }
 
         public string Path => this.Configuration.DatabasePath;
@@ -40,118 +44,164 @@ namespace JetCS.Server
 
         public void SyncDatabaseToFiles()
         {
-            DirectoryInfo di = new DirectoryInfo(config.DatabasePath);
-            bool exists = System.IO.Directory.Exists(di.FullName);
-            if (!exists)
-                System.IO.Directory.CreateDirectory(di.FullName);
-            var databases = di.GetFiles("*.mdb").Select(t => new Database()
+            try
             {
-                Name = t.Name.Substring(0, t.Name.Length - 4),
-                FilePath = t.FullName
-            }).ToList();
-            var dbs = dbContext.Databases.ToList();
-            var databasesNames = databases.Select(t => t.Name).ToList();
-            var dbsNames = dbs.Select(t => t.Name).ToList();
-            var indatabasesOnly = databasesNames.Except(dbsNames);
-            var indbsOnly = dbsNames.Except(databasesNames);
-            foreach (Database d in databases)
-            {
-                if (indatabasesOnly.Contains(d.Name))
+                this.EnterWriteLock("");
+                DirectoryInfo di = new DirectoryInfo(config.DatabasePath);
+                bool exists = System.IO.Directory.Exists(di.FullName);
+                if (!exists)
+                    System.IO.Directory.CreateDirectory(di.FullName);
+                var databases = di.GetFiles("*.mdb").Select(t => new Database()
                 {
-                    dbContext.Databases.Add(d);
-                }
-            }
-            foreach (Database d in dbs)
-            {
-                if (indbsOnly.Contains(d.Name))
+                    Name = t.Name.Substring(0, t.Name.Length - 4),
+                    FilePath = t.FullName
+                }).ToList();
+                
+                var dbs = dbContext.Databases.ToList();
+                var databasesNames = databases.Select(t => t.Name).ToList();
+                var dbsNames = dbs.Select(t => t.Name).ToList();
+                var indatabasesOnly = databasesNames.Except(dbsNames);
+                var indbsOnly = dbsNames.Except(databasesNames);
+                foreach (Database d in databases)
                 {
-                    dbContext.Databases.Remove(d);
+                    if (indatabasesOnly.Contains(d.Name))
+                    {
+                        dbContext.Databases.Add(d);
+                    }
                 }
+                foreach (Database d in dbs)
+                {
+                    if (indbsOnly.Contains(d.Name))
+                    {
+                        dbContext.Databases.Remove(d);
+                    }
+                }
+                dbContext.SaveChanges();
             }
-            dbContext.SaveChanges();
+            finally
+            {
+                this.ExitWriteLock("");
+            }
+
         }
 
         public void DeleteDatabase(string name)
         {
-            string path = config.DatabasePath + "\\" + name + ".mdb";
-            if (File.Exists(path))
+            try
             {
-                File.Delete(path);
-            }
-            var db = dbContext.Databases.FirstOrDefault(t => t.Name == name);
-            if (db != null)
+                this.EnterWriteLock("");
+                string path = config.DatabasePath + "\\" + name + ".mdb";
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+                
+                var db = dbContext.Databases.FirstOrDefault(t => t.Name == name);
+                if (db != null)
+                {
+                    dbContext.Databases.Remove(db);
+                    dbContext.SaveChanges();
+                }
+            } finally
             {
-                dbContext.Databases.Remove(db);
-                dbContext.SaveChanges();
+                this.ExitWriteLock("");
             }
         }
 
         public void CreateDatabase(string name, string connectionString)
         {
-            PreciseDatabaseCreator cr = new();
-            cr.CreateDatabase(connectionString);
-            var db = dbContext.Databases.FirstOrDefault(t => t.Name == name);
-            if (db == null)
+            try
             {
-                Database dbx = new Database() { Name = name, FilePath = config.DatabasePath + "\\" + name + ".mdb" };
-                dbContext.Databases.Add(dbx);
-                dbContext.SaveChanges();
+                this.EnterWriteLock("");
+                PreciseDatabaseCreator cr = new();
+                cr.CreateDatabase(connectionString);
+                var db = dbContext.Databases.FirstOrDefault(t => t.Name == name);
+                if (db == null)
+                {
+                    Database dbx = new Database() { Name = name, FilePath = config.DatabasePath + "\\" + name + ".mdb" };
+                    dbContext.Databases.Add(dbx);
+                    dbContext.SaveChanges();
+                }
+            }
+            finally
+            {
+                this.ExitWriteLock("");
             }
         }
 
         public string GetDatabaseConnectionString(string name)
         {
-            DirectoryInfo di = new DirectoryInfo(config.DatabasePath);
-            var databases = di.GetFiles("*.mdb").Select(t => new Database()
+            try
             {
-                Name = t.Name.Substring(0, t.Name.Length - 4),
-                FilePath = t.FullName
-            }).ToList();            
-            var db = databases.SingleOrDefault(t => t.Name.ToLower() == name.ToLower());
+                this.EnterReadLock("");
+                DirectoryInfo di = new DirectoryInfo(config.DatabasePath);
+                var databases = di.GetFiles("*.mdb").Select(t => new Database()
+                {
+                    Name = t.Name.Substring(0, t.Name.Length - 4),
+                    FilePath = t.FullName
+                }).ToList();
+                var db = databases.SingleOrDefault(t => t.Name.ToLower() == name.ToLower());
 
 
-            
 
-            if (db?.FilePath == null)
-            {
-                return "";
+
+                if (db?.FilePath == null)
+                {
+                    return "";
+                }
+                else
+                {
+                    return $"Provider={config.Provider};Data Source={(db?.FilePath ?? "")};";
+                }
             }
-            else
+            finally
             {
-                return $"Provider={config.Provider};Data Source={(db?.FilePath ?? "")};";
+                this.ExitReadLock("");
             }
         }
 
 
-        public Auth LoginWithoutDatabase(string loginName, string password)
+        public async Task<Auth> LoginWithoutDatabaseAsync(string loginName, string password)
         {
             Auth auth = new Auth();
-            auth.LoginName = loginName;
-            var dblogin = dbContext.Logins.Include(t => t.DatabaseLogins).ThenInclude(t => t.Database).FirstOrDefault(t => t.LoginName.ToLower() == loginName.ToLower());
-            if (dblogin == null)
+            try
             {
+                this.EnterReadLock("");
+                auth.LoginName = loginName;
+                var dblogin = await dbContext.Logins.Include(t => t.DatabaseLogins).ThenInclude(t => t.Database).FirstOrDefaultAsync(t => t.LoginName.ToLower() == loginName.ToLower());
+                if (dblogin == null)
+                {
+
+                    auth.Authenticated = false;
+                    auth.StatusMessage = $"Invalid Login Name {loginName}";
+                    return auth;
+                }
+                if (!PasswordTools.VerifyPassword(password, dblogin.Hash, dblogin.Salt))
+                {
+
+                    auth.Authenticated = false;
+                    auth.StatusMessage = $"Invalid Password";
+
+                    return auth;
+                }
+                auth.IsAdmin = dblogin.IsAdmin ?? false;
+                auth.DatabaseNames = dblogin.DatabaseLogins.Select(t => t.Database.Name).ToList();
+                auth.StatusMessage = "Authenticated";
+                auth.Authenticated = true;
+
                 
-                auth.Authenticated = false;
-                auth.StatusMessage = $"Invalid Login Name {loginName}";
-                return auth;
             }
-            if (!PasswordTools.VerifyPassword(password, dblogin.Hash, dblogin.Salt))
+            finally
             {
-                
-                auth.Authenticated = false;
-                auth.StatusMessage = $"Invalid Password";
+                this.ExitReadLock("");
                
-                return auth;
             }
-            auth.IsAdmin = dblogin.IsAdmin ?? false;
-            auth.DatabaseNames = dblogin.DatabaseLogins.Select(t=> t.Database.Name).ToList();
-            auth.StatusMessage = "Authenticated";
-            auth.Authenticated = true;
             return auth;
+
         }
-        public Auth LoginWithDatabase(string name, string loginName, string password)
+        public async Task<Auth> LoginWithDatabaseAsync(string name, string loginName, string password)
         {
-            Auth auth = LoginWithoutDatabase(loginName, password);
+            Auth auth = await LoginWithoutDatabaseAsync(loginName, password);
             if (!auth.Authenticated)
             {
                 return auth;
@@ -176,6 +226,35 @@ namespace JetCS.Server
             else
             {
                 return "";
+            }
+        }
+
+        public void EnterReadLock(string name)
+        {
+            ReaderWriterLockSlim rwLock = locks.GetOrAdd(name, _ => new ReaderWriterLockSlim());
+            rwLock.EnterReadLock();
+        }
+
+        public void ExitReadLock(string name)
+        {
+            if (locks.TryGetValue(name, out var rwLock))
+            {
+                rwLock.ExitReadLock();
+            }
+        }
+
+        public void EnterWriteLock(string name)
+        {
+            ReaderWriterLockSlim rwLock = locks.GetOrAdd(name, _ => new ReaderWriterLockSlim());
+            rwLock.EnterWriteLock();            
+        }
+
+        public void ExitWriteLock(string name)
+        {
+            if (locks.TryGetValue(name, out var rwLock))
+            {
+                rwLock.ExitWriteLock();
+                Console.WriteLine(rwLock.WaitingReadCount);
             }
         }
 

@@ -88,10 +88,6 @@ namespace JetCS.ServerTest.Commands
 
         
 
-
-
-
-
         [TestCleanup]
         public void Cleanup()
         {

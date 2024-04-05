@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using JetCS.Domain;
 using JetCS.Common.Helpers;
+using Microsoft.EntityFrameworkCore;
 
 namespace JetCS.Server.Commands
 {
@@ -25,7 +26,7 @@ namespace JetCS.Server.Commands
 
         
         public string[] Identifiers => [$"^{Name}"];
-        public CommandResult Execute(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
         {
             
             CommandResult commandResult = new(Name);
@@ -36,7 +37,7 @@ namespace JetCS.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = databases.LoginWithoutDatabase(csb.Login, csb.Password);
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -51,16 +52,24 @@ namespace JetCS.Server.Commands
             {
                 return commandResult.SetErrorMessage($"Invalid '{Name}' Command:{cmd.CommandText}");
             }
-            
-            Login? login = databases.DbContext.Logins.FirstOrDefault(t => t.LoginName.ToLower() == commandString[2].ToLower());
-            if (login != null)
+
+            try
             {
-                databases.DbContext.Logins.Remove(login);
-                commandResult.RecordCount = databases.DbContext.SaveChanges();
+                databases.EnterWriteLock("");
+                Login? login = await databases.DbContext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
+                if (login != null)
+                {
+                    databases.DbContext.Logins.Remove(login);
+                    commandResult.RecordCount = databases.DbContext.SaveChanges();
+                }
+                else
+                {
+                    commandResult.ErrorMessage = $"Login {commandString[2]} not found";
+                }
             }
-            else
+            finally
             {
-                commandResult.ErrorMessage = $"Login {commandString[2]} not found";
+                databases.ExitWriteLock("");
             }
             
            

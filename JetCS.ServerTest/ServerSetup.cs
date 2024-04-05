@@ -23,7 +23,6 @@ namespace JetCS.ServerTest
 
             Config config;
             IServiceProvider serviceProvider;
-
             config = new Config()
             {
                 DatabasePath = Directory.GetCurrentDirectory() + "\\Data",

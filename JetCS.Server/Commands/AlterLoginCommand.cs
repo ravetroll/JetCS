@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using JetCS.Domain;
 using JetCS.Common.Helpers;
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 
 namespace JetCS.Server.Commands
 {
@@ -25,7 +26,7 @@ namespace JetCS.Server.Commands
         public string Description => $"JetCS {Name} Statement; {Name} <login> <password> ADMIN";
 
         public string[] Identifiers => [$"^{Name}"];
-        public CommandResult Execute(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
         {
             
             CommandResult commandResult = new(Name);
@@ -36,7 +37,7 @@ namespace JetCS.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = databases.LoginWithoutDatabase(csb.Login, csb.Password);
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -54,32 +55,36 @@ namespace JetCS.Server.Commands
                 commandResult.SetErrorMessage($"Invalid '{Name}' Command:{cmd.CommandText}");
             }
 
-
-            
-            Login? login = databases.DbContext.Logins.FirstOrDefault(t => t.LoginName == commandString[2]);
-            if (login != null)
+            try
             {
-
-                var pw = PasswordTools.HashPassword(commandString[3]);
-                login.Hash = pw.Key;
-                login.Salt = pw.Value;
-                // If User is changing their own login they cannot drop their own admin status
-                if ((commandString.Length == 5 && commandString[4].ToUpper() == "ADMIN") || login.LoginName.ToLower() == auth.LoginName.ToLower())
+                databases.EnterWriteLock("");
+                Login? login = await databases.DbContext.Logins.FirstOrDefaultAsync(t => t.LoginName == commandString[2]);
+                if (login != null)
                 {
-                    login.IsAdmin = true;
+
+                    var pw = PasswordTools.HashPassword(commandString[3]);
+                    login.Hash = pw.Key;
+                    login.Salt = pw.Value;
+                    // If User is changing their own login they cannot drop their own admin status
+                    if ((commandString.Length == 5 && commandString[4].ToUpper() == "ADMIN") || login.LoginName.ToLower() == auth.LoginName.ToLower())
+                    {
+                        login.IsAdmin = true;
+                    }
+                    else
+                    {
+                        login.IsAdmin = false;
+                    }
+                    commandResult.RecordCount = await databases.DbContext.SaveChangesAsync();
                 }
                 else
                 {
-                    login.IsAdmin = false;
+                    commandResult.ErrorMessage = $"Login '{commandString[2]}' does not exist";
                 }
-                commandResult.RecordCount = databases.DbContext.SaveChanges();
             }
-            else
+            finally
             {
-                commandResult.ErrorMessage = $"Login '{commandString[2]}' does not exist";
+                databases.ExitWriteLock("");
             }
-
-
 
             return commandResult;
 

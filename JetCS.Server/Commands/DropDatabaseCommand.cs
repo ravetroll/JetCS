@@ -30,7 +30,7 @@ namespace JetCS.Server.Commands
 
        
         public string[] Identifiers => [$"^{Name}"];
-        public CommandResult Execute(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
         {
                      
             CommandResult commandResult = new(Name);
@@ -41,7 +41,7 @@ namespace JetCS.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = databases.LoginWithoutDatabase(csb.Login, csb.Password);
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);

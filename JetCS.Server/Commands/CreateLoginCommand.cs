@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using JetCS.Domain;
 using JetCS.Common.Helpers;
+using Microsoft.EntityFrameworkCore;
 
 namespace JetCS.Server.Commands
 {
@@ -25,7 +26,7 @@ namespace JetCS.Server.Commands
 
        
         public string[] Identifiers => [$"^{Name}"];
-        public CommandResult Execute(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
         {
 
             CommandResult commandResult = new(Name);
@@ -36,7 +37,7 @@ namespace JetCS.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = databases.LoginWithoutDatabase(csb.Login, csb.Password);
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -52,33 +53,39 @@ namespace JetCS.Server.Commands
             {
                 return commandResult.SetErrorMessage($"Invalid '{Name}' Command:{cmd.CommandText}");
             }
-            
-            Login? login = databases.DbContext.Logins.FirstOrDefault(t => t.LoginName.ToLower() == commandString[2].ToLower());
-            if (login == null)
+            try
             {
-
-                login = new Login();
-
-                login.LoginName = commandString[2];
-                var pw = PasswordTools.HashPassword(commandString[3]);
-                login.Hash = pw.Key;
-                login.Salt = pw.Value;
-                if (commandString.Length == 5 && commandString[4].ToUpper() == "ADMIN")
+                databases.EnterWriteLock("");
+                Login? login = await databases.DbContext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
+                if (login == null)
                 {
-                    login.IsAdmin = true;
+
+                    login = new Login();
+
+                    login.LoginName = commandString[2];
+                    var pw = PasswordTools.HashPassword(commandString[3]);
+                    login.Hash = pw.Key;
+                    login.Salt = pw.Value;
+                    if (commandString.Length == 5 && commandString[4].ToUpper() == "ADMIN")
+                    {
+                        login.IsAdmin = true;
+                    }
+                    else
+                    {
+                        login.IsAdmin = false;
+                    }
+                    databases.DbContext.Add(login);
+                    commandResult.RecordCount = await databases.DbContext.SaveChangesAsync();
                 }
                 else
                 {
-                    login.IsAdmin = false;
+                    commandResult.ErrorMessage = $"Login '{commandString[2]}' already exists";
                 }
-                databases.DbContext.Add(login);
-                commandResult.RecordCount = databases.DbContext.SaveChanges();
             }
-            else
+            finally
             {
-                commandResult.ErrorMessage = $"Login '{commandString[2]}' already exists";
+                databases.ExitWriteLock("");
             }
-
 
             return commandResult;
 

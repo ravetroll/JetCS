@@ -15,7 +15,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JetCS.Common", "JetCS.Commo
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JetCS.Browser", "JetCS.Browser\JetCS.Browser.csproj", "{5E8FE0AF-5ABC-47F1-831C-93A7C3E5A3B9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JetCS.ServerTest", "JetCS.ServerTest\JetCS.ServerTest.csproj", "{FBAC07DC-A30B-4E7A-A29B-182E15A1E0A9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JetCS.ServerTest", "JetCS.ServerTest\JetCS.ServerTest.csproj", "{FBAC07DC-A30B-4E7A-A29B-182E15A1E0A9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{AA65A387-8298-4848-85D1-36B6ECACDDD7}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

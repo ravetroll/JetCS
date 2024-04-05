@@ -14,7 +14,8 @@ namespace JetCS.Server.Commands
         string Name { get; }
         string Description { get; }        
         string[] Identifiers { get; }
-        CommandResult Execute(Command cmd, Databases databases);
+        bool DataChange { get; } 
+        Task<CommandResult> ExecuteAsync(Command cmd, Databases databases);
 
         
      

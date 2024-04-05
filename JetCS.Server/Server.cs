@@ -62,8 +62,8 @@ namespace JetCS.Server
             }
         }
 
-       
-
+        
+        public bool SingleClient { get; } = false; // If true limits the system to a single TcpClient Handler
         public Databases Databases => dbs;
 
         public bool CompressedMode => this.cfg.CompressedMode;
@@ -82,8 +82,16 @@ namespace JetCS.Server
                     var endTime = DateTime.Now;
                     Console.WriteLine($"AcceptClientsAsync in: {(endTime - startTime).TotalMilliseconds}ms");
                     // Handle client in a new thread
-                    await Task.Run(() => HandleClientAsync(client, cancellationToken));
+                    if (SingleClient)
+                    {
+                        await Task.Run(() => HandleClientAsync(client, cancellationToken));
+                    } else
+                    {
+                        _ = HandleClientAsync(client, cancellationToken);
+                    }
                     
+                        
+
                 }
                 catch (SocketException)
                 {
@@ -94,45 +102,61 @@ namespace JetCS.Server
 
         private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
         {
-            var startTime = DateTime.Now;
-            
-            using (NetworkStream stream = client.GetStream())
+            try
             {
-                using (Databases databases = serviceProvider.GetRequiredService<Databases>())
+                var startTime = DateTime.Now;
+
+                using (NetworkStream stream = client.GetStream())
                 {
-                    Command cmd = await GetCommand(stream, cancellationToken);
-                    CommandResult commandResult = ProcessCommand(cmd,databases);
-                    await RespondCommand(stream, commandResult, cancellationToken);
+                    using (Databases databases = serviceProvider.GetRequiredService<Databases>())
+                    {
+                        Command cmd = await GetCommandAsync(stream, cancellationToken);
+                        CommandResult commandResult = await ProcessCommandAsync(cmd, databases);
+                        await RespondCommandAsync(stream, commandResult, cancellationToken);
+                    }
                 }
+                
+                var endTime = DateTime.Now;
+                Console.WriteLine($"HandleClientAsync in: {(endTime - startTime).TotalMilliseconds}ms");
             }
-            client.Close();
-            var endTime = DateTime.Now;
-            Console.WriteLine($"HandleClientAsync in: {(endTime-startTime).TotalMilliseconds}ms");
+            catch (Exception ex) {
+                Log.Error(ex);
+            }
+            finally
+            {
+                client.Close();
+            }
         }
 
-        private  async Task RespondCommand(NetworkStream stream, CommandResult commandResult, CancellationToken cancellationToken)
+        private  async Task RespondCommandAsync(NetworkStream stream, CommandResult commandResult, CancellationToken cancellationToken)
         {
+
+            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(10000);
+            CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,ctsTimeOut.Token);
             string resultJson = Common.Serialization.Convert.SerializeCommandResult(commandResult);
-            byte[] response;
-            if (this.cfg.CompressedMode)
-            {
-                response = CompressionTools.CompressData(resultJson);
-            }
-            else
-            {
-                response = Encoding.ASCII.GetBytes(resultJson);
-            }
-           
-            await stream.WriteAsync(response, 0, response.Length, cancellationToken);
+                byte[] response;
+                if (this.cfg.CompressedMode)
+                {
+                    response = CompressionTools.CompressData(resultJson);
+                }
+                else
+                {
+                    response = Encoding.ASCII.GetBytes(resultJson);
+                }
+
+                
+            
+                await stream.WriteAsync(response, 0, response.Length, combined.Token);
+            
         }
 
-        private CommandResult ProcessCommand(Command cmd, Databases databases)
+        private async Task<CommandResult> ProcessCommandAsync(Command cmd, Databases databases)
         {
             CommandResult commandResult = new CommandResult();
            
             try
             {
-                commandResult = commandDispatcher.Dispatch(cmd,databases);
+                commandResult = await commandDispatcher.DispatchAsync(cmd,databases);
             }
             catch (Exception ex)
             {
@@ -142,10 +166,11 @@ namespace JetCS.Server
             return commandResult;
         }
 
-        private  async Task<Command> GetCommand(NetworkStream stream, CancellationToken cancellationToken)
+        private  async Task<Command> GetCommandAsync(NetworkStream stream, CancellationToken cancellationToken)
         {
 
-
+            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(10000);
+            CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
             using (MemoryStream ms = new MemoryStream())
             {
                 // Receive response from server (optional)
@@ -159,7 +184,7 @@ namespace JetCS.Server
                     int bytesRead = 0;
                     bool moreAvailable = true;
                     
-                    while (moreAvailable && (bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+                    while (moreAvailable && (bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, combined.Token)) > 0)
                     {
 
                         ms.Write(buffer, 0, bytesRead);
