@@ -41,8 +41,9 @@ namespace JetCS.ServerTest
                 .AddScoped<Databases>()
                 .AddScoped<CommandDispatcher>()
                 .AddScoped<SeedData>()
+                .AddSingleton<JetCS.Server.Server>()
                 .BuildServiceProvider();
-            JetCS.Server.Server server = new(config, serviceProvider);
+            JetCS.Server.Server server = serviceProvider.GetRequiredService<JetCS.Server.Server>();
             server.Reset();
             return server;
         }

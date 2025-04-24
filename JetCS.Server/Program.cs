@@ -61,7 +61,8 @@ try
         .AddDbContext<JetCSDbContext>(options => options.UseJetOleDb($"Provider={config.Provider}; Data Source={Directory.GetCurrentDirectory()}\\JetCS.mdb;"))
         .AddScoped<Databases>()
         .AddScoped<CommandDispatcher>()
-        .AddScoped<SeedData>()            
+        .AddScoped<SeedData>()
+        .AddSingleton<Server>()
         .AddSerilog(logger)
         .BuildServiceProvider();
     
@@ -80,7 +81,7 @@ try
         hostConfig.Service<Server>(serviceConfig =>
         {
 
-            serviceConfig.ConstructUsing(() => new Server(config, serviceProvider));
+            serviceConfig.ConstructUsing(() => serviceProvider.GetRequiredService<Server>());
             
             serviceConfig.WhenStarted(server => server.Start());
             serviceConfig.WhenStopped(server => server.Stop());

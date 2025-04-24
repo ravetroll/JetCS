@@ -13,7 +13,7 @@ namespace JetCS.Server.Commands
 {
     public abstract class CommandBase
     {
-        public bool DataChange { get; } = true;
+        public bool DataChange { get; } = true;        
         public async Task<CommandResult> ExecuteNonQueryResultAsync(string name, Command cmd, Databases dbs)
         {
 

@@ -30,7 +30,7 @@ namespace JetCS.Server
         private TcpListener _listener;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly IConfiguration config;
-        private readonly IServiceProvider serviceProvider;
+       
         private Config cfg;
         private Databases dbs;
         private SeedData seed;
@@ -38,20 +38,23 @@ namespace JetCS.Server
         private CommandDispatcher commandDispatcher;
         private bool isRunning = false;        
         private static readonly LogWriter Log = HostLogger.Get<Server>();
-       
 
-        public Server(Config config,IServiceProvider provider)
+
+        public Server(
+            Config config,
+            JetCSDbContext dbContext,
+            CommandDispatcher commandDispatcher,
+            SeedData seedData,
+            Databases databases)
         {
-            this.cfg = config;  
-            this.serviceProvider = provider;
-            this.db = serviceProvider.GetRequiredService<JetCSDbContext>();
-            this.commandDispatcher = serviceProvider.GetRequiredService<CommandDispatcher>();
-            this.seed = serviceProvider.GetRequiredService<SeedData>();
-            this.dbs = serviceProvider.GetRequiredService<Databases>();
-            
+            this.cfg = config;
+            this.db = dbContext;
+            this.commandDispatcher = commandDispatcher;
+            this.seed = seedData;
+            this.dbs = databases;
         }
 
-       
+
 
         public void Reset()
         {
@@ -108,10 +111,10 @@ namespace JetCS.Server
 
                 using (NetworkStream stream = client.GetStream())
                 {
-                    using (Databases databases = serviceProvider.GetRequiredService<Databases>())
+                    using (this.Databases)
                     {
                         Command cmd = await GetCommandAsync(stream, cancellationToken);
-                        CommandResult commandResult = await ProcessCommandAsync(cmd, databases);
+                        CommandResult commandResult = await ProcessCommandAsync(cmd, this.Databases);
                         await RespondCommandAsync(stream, commandResult, cancellationToken);
                     }
                 }
@@ -134,19 +137,19 @@ namespace JetCS.Server
             CancellationTokenSource ctsTimeOut = new CancellationTokenSource(10000);
             CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,ctsTimeOut.Token);
             string resultJson = Common.Serialization.Convert.SerializeCommandResult(commandResult);
-                byte[] response;
-                if (this.cfg.CompressedMode)
-                {
-                    response = CompressionTools.CompressData(resultJson);
-                }
-                else
-                {
-                    response = Encoding.ASCII.GetBytes(resultJson);
-                }
+            byte[] response;
+            if (this.cfg.CompressedMode)
+            {
+                response = CompressionTools.CompressData(resultJson);
+            }
+            else
+            {
+                response = Encoding.ASCII.GetBytes(resultJson);
+            }
 
                 
             
-                await stream.WriteAsync(response, 0, response.Length, combined.Token);
+            await stream.WriteAsync(response, 0, response.Length, combined.Token);
             
         }
 
