@@ -18,7 +18,7 @@ namespace JetCS.Server.Commands
 {
     public class CreateDatabaseCommand : CommandBase, ICommand
     {
-        private readonly Databases databases;
+        
 
         public CreateDatabaseCommand()
         {

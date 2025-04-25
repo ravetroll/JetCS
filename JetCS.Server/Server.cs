@@ -39,7 +39,7 @@ namespace JetCS.Server
         private bool isRunning = false;        
         private static readonly LogWriter Log = HostLogger.Get<Server>();
 
-
+        private SemaphoreSlim clientsLimit;
         public Server(
             Config config,
             JetCSDbContext dbContext,
@@ -52,6 +52,7 @@ namespace JetCS.Server
             this.commandDispatcher = commandDispatcher;
             this.seed = seedData;
             this.dbs = databases;
+            this.clientsLimit = new SemaphoreSlim(1, this.cfg.Limits.MaxClients);
         }
 
 
@@ -79,6 +80,7 @@ namespace JetCS.Server
             {
                 try
                 {
+                    await clientsLimit.WaitAsync(cancellationToken);
                     var startTime = DateTime.Now;
                     TcpClient client = await _listener.AcceptTcpClientAsync();
                     //Console.WriteLine("Client connected.");
@@ -96,9 +98,17 @@ namespace JetCS.Server
                         
 
                 }
-                catch (SocketException)
+                catch (SocketException se)
                 {
-                    // Handle socket exception (e.g., when the server is stopped)
+                    Console.WriteLine($"AcceptClientsAsync experienced a SocketException:{se.Message}");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"AcceptClientsAsync experienced an Exception:{e.Message}");
+                }
+                finally
+                {
+                    clientsLimit.Release();                    
                 }
             }
         }
@@ -113,7 +123,8 @@ namespace JetCS.Server
                 {
                     using (this.Databases)
                     {
-                        Command cmd = await GetCommandAsync(stream, cancellationToken);
+                        
+                        Command cmd = await GetCommandAsync(stream, cancellationToken);                       
                         CommandResult commandResult = await ProcessCommandAsync(cmd, this.Databases);
                         await RespondCommandAsync(stream, commandResult, cancellationToken);
                     }
@@ -131,39 +142,67 @@ namespace JetCS.Server
             }
         }
 
-        private  async Task RespondCommandAsync(NetworkStream stream, CommandResult commandResult, CancellationToken cancellationToken)
+        private async Task RespondCommandAsync(NetworkStream stream, CommandResult commandResult, CancellationToken cancellationToken)
         {
 
-            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(10000);
-            CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,ctsTimeOut.Token);
-            string resultJson = Common.Serialization.Convert.SerializeCommandResult(commandResult);
-            byte[] response;
-            if (this.cfg.CompressedMode)
+            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(cfg.Limits.CommandResultTimeout);
+            CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
+            try
             {
-                response = CompressionTools.CompressData(resultJson);
-            }
-            else
-            {
-                response = Encoding.ASCII.GetBytes(resultJson);
-            }
+                string resultJson = Common.Serialization.Convert.SerializeCommandResult(commandResult);
+                byte[] response;
+                if (this.cfg.CompressedMode)
+                {
+                    response = CompressionTools.CompressData(resultJson);
+                }
+                else
+                {
+                    response = Encoding.ASCII.GetBytes(resultJson);
+                }
 
-                
-            
-            await stream.WriteAsync(response, 0, response.Length, combined.Token);
-            
+
+
+                await stream.WriteAsync(response, 0, response.Length, combined.Token);
+            }
+            catch (OperationCanceledException ex)
+            {
+                try
+                {
+                    if (ctsTimeOut.IsCancellationRequested)
+                    {
+                        throw new TimeoutException($"The RespondCommandAsync task timed out after {cfg.Limits.CommandResultTimeout} milliseconds.");
+                    }
+                }
+                catch (Exception ex2)
+                {
+                    Log.Error(ex2);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex);
+
+            }
         }
 
         private async Task<CommandResult> ProcessCommandAsync(Command cmd, Databases databases)
         {
             CommandResult commandResult = new CommandResult();
-           
-            try
+            if (cmd.ErrorMessage == null)
             {
-                commandResult = await commandDispatcher.DispatchAsync(cmd,databases);
+
+                try
+                {
+                    commandResult = await commandDispatcher.DispatchAsync(cmd, databases);
+                }
+                catch (Exception ex)
+                {
+                    commandResult.ErrorMessage = ex.Message;
+                }
             }
-            catch (Exception ex)
+            else
             {
-                commandResult.ErrorMessage = ex.Message;
+                commandResult.ErrorMessage = "Command Error: " + cmd.ErrorMessage;
             }
 
             return commandResult;
@@ -172,18 +211,19 @@ namespace JetCS.Server
         private  async Task<Command> GetCommandAsync(NetworkStream stream, CancellationToken cancellationToken)
         {
 
-            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(10000);
+            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(cfg.Limits.CommandTimeout);
             CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
             using (MemoryStream ms = new MemoryStream())
             {
                 // Receive response from server (optional)
-                //StringBuilder responseData = new StringBuilder();
+               
                 int bytesReadSum = 0;
-                byte[] receivedData;
+                byte[] receivedData = [];
                 string dataReceived;
                 try
                 {
-                    byte[] buffer = new byte[1024];
+                    byte[] buffer = new 
+                    byte[1024];
                     int bytesRead = 0;
                     bool moreAvailable = true;
                     
@@ -193,11 +233,32 @@ namespace JetCS.Server
                         ms.Write(buffer, 0, bytesRead);
                         bytesReadSum += bytesRead;
                         moreAvailable = stream.DataAvailable;
+                        if (bytesReadSum > cfg.Limits.MaxCommandSizeBytes)
+                        {
+                            throw new InvalidDataException($"Command size exceeds {cfg.Limits.MaxCommandSizeBytes} bytes");
+                        }
                     }
                     receivedData = ms.ToArray();
-                } catch (Exception ex)
+                } 
+                catch (OperationCanceledException ex)
                 {
-                    return new Command();
+                    try
+                    {
+                        if (ctsTimeOut.IsCancellationRequested)
+                        {
+                            throw new TimeoutException($"The GetCommandAsync task timed out after {cfg.Limits.CommandTimeout} milliseconds.");
+                        }
+
+
+                    }
+                    catch (Exception ex2)
+                    {
+                        return new Command() { ErrorMessage = ex2.Message };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new Command() { ErrorMessage = ex.Message};
                 }
 
                 try
@@ -214,7 +275,7 @@ namespace JetCS.Server
                     }
                 } catch (Exception ex)
                 {
-                    return new Command();
+                    return new Command() { ErrorMessage = ex.Message };
                 }
                 try
                 {
@@ -224,7 +285,7 @@ namespace JetCS.Server
                 }
                 catch (Exception ex)
                 {
-                    return new Command();
+                    return new Command() { ErrorMessage = ex.Message };
                 }
             }
         }

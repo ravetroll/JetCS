@@ -1,6 +1,7 @@
 ﻿using JetCS.Common.Messaging;
 using JetCS.Persistence;
 using JetCS.Server.Commands;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,14 +19,16 @@ namespace JetCS.Server
         private readonly Databases dbs;
         //private static ReaderWriterLock rwl = new ReaderWriterLock();
 
-        public CommandDispatcher()
+        public CommandDispatcher(Databases databases)
         {
+            dbs = databases;
             Assembly assembly = Assembly.GetExecutingAssembly();
             foreach (Type type in assembly.GetTypes())
             {
                 if (typeof(ICommand).IsAssignableFrom(type) && type.IsClass && !type.IsAbstract)
                 {
                     // Use Activator.CreateInstance with null check to avoid CS8600
+                    
                     if (Activator.CreateInstance(type) is ICommand t)
                     {
                         commands.Add(t.Identifiers, t);

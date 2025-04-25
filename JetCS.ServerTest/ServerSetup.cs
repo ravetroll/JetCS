@@ -4,6 +4,7 @@ using JetCS.Domain;
 using JetCS.Persistence;
 using JetCS.Server;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using System;
@@ -19,17 +20,22 @@ namespace JetCS.ServerTest
        
         public static JetCS.Server.Server BuildServer()
         {
+            string baseDir = Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location);
 
+            var builder = new ConfigurationBuilder()
+                    .SetBasePath(baseDir)
+                    .AddJsonFile("config.test.json", optional: false);
 
-            Config config;
-            IServiceProvider serviceProvider;
-            config = new Config()
+            IConfiguration configRoot = builder.Build();
+
+            Config config = configRoot.GetSection("Config").Get<Config>() ?? new Config()
             {
-                DatabasePath = Directory.GetCurrentDirectory() + "\\Data",
-                ListenPort = 1549,
-                Provider = "Microsoft.ACE.OLEDB.16.0",
-                CompressedMode = false,
+                DatabasePath = baseDir + "\\Data"
             };
+
+           
+            IServiceProvider serviceProvider;
+            
             // Deletes All Databases
             ClearData(config.DatabasePath);
             // Creates DI container

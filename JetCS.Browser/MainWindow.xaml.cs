@@ -47,7 +47,7 @@ namespace JetCS.Browser
             }
             catch (Exception ex)
             {
-                
+                Console.WriteLine(ex.Message);
             }
         }
 

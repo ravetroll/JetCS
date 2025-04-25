@@ -12,19 +12,23 @@ namespace JetCS.Common.Messaging
     {
         public Command()
         {
-            CommandText = "NO COMMAND";
-            ConnectionString = string.Empty;
+            BuildCommand("NO CONNECTION", "NO COMMAND",null);
         }    
 
         public Command(string connString, string commandText)
         {
 
-            CommandText = commandText;
-            ConnectionString = connString;
-
+            BuildCommand(connString, commandText, null);
         }
 
-        
+        private void BuildCommand(string connString, string commandText, string? errorMessage)
+        {
+            CommandText = commandText;
+            ConnectionString = connString;
+            ErrorMessage = null;
+        }
+
+        public string? ErrorMessage { get; set; }
         public  string ConnectionString {  get; set; }
         public string CommandText { get; set; }
 

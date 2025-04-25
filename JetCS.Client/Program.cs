@@ -13,6 +13,7 @@ Console.WriteLine("Press any key to start...");
 Console.WriteLine("Menu:");
 Console.WriteLine("1. Create, Use and Drop Database");
 Console.WriteLine("2. Create and Use Database");
+Console.WriteLine("3. Run Selects Only");
 
 var choice = Console.ReadLine();
 if (choice == "1")
@@ -80,6 +81,36 @@ else if (choice == "2")
             //RunCommand(connStr, "INSERT INTO YourTable (Column1, Column2) SELECT Column1, Column2 FROM YourTable");
             RunCommand(connStr, "SELECT * FROM YourTable");
            
+            //Console.ReadLine();
+        }
+
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error: " + ex.Message);
+    }
+}
+else if (choice == "3")
+{
+    Console.WriteLine("Running selects...");
+    try
+    {
+        // Connect to the server
+        ConnectionStringBuilder connStrBuild = new ConnectionStringBuilder("db", "127.0.0.1");
+        string connStr = connStrBuild.ToString();
+        while (1 == 1)
+        {
+
+
+
+           
+            connStrBuild = new ConnectionStringBuilder("TEST2", "127.0.0.1", "user2", "password");
+            connStr = connStrBuild.ToString();
+          
+            RunCommand(connStr, "SELECT * FROM YourTable");
+            RunCommand(connStr, "SELECT COUNT(Column1) FROM YourTable");
+
+
             //Console.ReadLine();
         }
 

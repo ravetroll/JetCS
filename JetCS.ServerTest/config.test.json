@@ -2,6 +2,14 @@
   "Config": {
     "DatabasePath": "C:\\temp",
     "Provider": "Microsoft.ACE.OLEDB.16.0",
-    "ListenPort": 1549
+    "ListenPort": 1549,
+    "CompressedMode": true,
+    "Limits": {
+      "MaxClients": 10,
+      "MaxCommandSizeBytes": 1048576,
+      "MaxCommandResultSizeBytes": 1048576,
+      "CommandResultTimeout": 10000,
+      "CommandTimeout": 10000
+    }
   }
 }

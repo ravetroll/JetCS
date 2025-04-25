@@ -46,7 +46,7 @@ namespace JetCS.Common
             initialized = Build(databaseName, serverName);
         }
 
-        public bool Deserialize(string connectionString)
+        public bool Deserialize(string? connectionString)
         {
             bool result = true;
             try

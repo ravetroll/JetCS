@@ -13,11 +13,11 @@ namespace JetCS.Common.Messaging
         public CommandResult() { }
 
         public CommandResult(string commandName) { CommandName = commandName; }
-        public DataTable Result { get; set; }
+        public DataTable? Result { get; set; }
         public int RecordCount { get; set; }
-        public string ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
 
-        public string CommandName { get; set; }
+        public string? CommandName { get; set; }
 
         public CommandResult SetErrorMessage(string msg)
         {
