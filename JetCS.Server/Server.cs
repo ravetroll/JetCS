@@ -149,7 +149,7 @@ namespace JetCS.Server
             CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
             try
             {
-                string resultJson = Common.Serialization.Convert.SerializeCommandResult(commandResult);
+                string resultJson = Common.Serialization.ConvertCommandAndResult.SerializeCommandResult(commandResult);
                 byte[] response;
                 if (this.cfg.CompressedMode)
                 {
@@ -279,7 +279,7 @@ namespace JetCS.Server
                 }
                 try
                 {
-                    Command cmd = Common.Serialization.Convert.DeSerializeCommand(dataReceived);
+                    Command cmd = Common.Serialization.ConvertCommandAndResult.DeSerializeCommand(dataReceived);
 
                     return cmd;
                 }

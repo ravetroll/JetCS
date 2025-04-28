@@ -25,8 +25,8 @@ namespace JetCS.Common
             csb = new ConnectionStringBuilder(connection);
             
             this.compressedMode = compressedMode;
+            
 
-           
         }
 
         public bool CompressedMode => compressedMode;
@@ -37,6 +37,9 @@ namespace JetCS.Common
 
             if (csb.Initialized)
             {
+               
+                
+                int bytesReadSum = 0;
                 var startTime = DateTime.Now;
                 TcpClient client = new TcpClient(csb.Server, csb.Port);
                 var endTime = DateTime.Now;
@@ -46,60 +49,20 @@ namespace JetCS.Common
 
                 // Send SQL INSERT statement to server
 
-               
-                Command cmd = new Command(csb.ToString(), command);
-                string cmdJson = JetCS.Common.Serialization.Convert.SerializeCommand(cmd);
-                byte[] data;
-                if (compressedMode)
-                {
-                    data = CompressionTools.CompressData(cmdJson);
-                }
-                else
-                {
-                    data = Encoding.ASCII.GetBytes(cmdJson);
-                }
-               
-                stream.Write(data, 0, data.Length);
-
+                byte[] sendData = PrepareCommand(command);
+                stream.Write(sendData, 0, sendData.Length);
 
                 // Receive response from server (optional)
-                using (MemoryStream ms = new MemoryStream())
-                {
-                    StringBuilder responseData = new StringBuilder();
-                    byte[] buffer = new byte[1024];
-                    int bytesRead;
-                    int bytesReadSum = 0;
+                byte[] receivedData = ReceiveResult(ref bytesReadSum, stream);              
 
-                    while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
-                    {
+                CommandResult result = BuildResponse(receivedData, bytesReadSum);
 
-                        bytesReadSum += bytesRead;
-                       
-                        ms.Write(buffer, 0, bytesRead);
+                // Close connection
+                stream.Close();
+                client.Close();
+                return result;
 
-                    }
-                    byte[] receivedData = ms.ToArray();
-                    string dataReceived;
-                    if (compressedMode)
-                    {
-                        dataReceived = CompressionTools.DecompressData(receivedData, bytesReadSum);
 
-                    }
-                    else
-                    {
-                        dataReceived = Encoding.ASCII.GetString(receivedData);
-                    }
-                   
-                    CommandResult result = JetCS.Common.Serialization.Convert.DeSerializeCommandResult(dataReceived);
-                    result.Result = RemoveEmptyRow(result.Result);
-                  
-
-                    // Close connection
-                    stream.Close();
-                    client.Close();
-                    return result;
-                }
-                
             }
             else
             {
@@ -107,8 +70,61 @@ namespace JetCS.Common
             }
         }
 
+        private CommandResult BuildResponse(byte[] receivedData, int bytesReadSum)
+        {
+            string dataReceived;
+            if (compressedMode)
+            {
+                dataReceived = CompressionTools.DecompressData(receivedData, bytesReadSum);
+
+            }
+            else
+            {
+                dataReceived = Encoding.ASCII.GetString(receivedData);
+            }
+            CommandResult result = JetCS.Common.Serialization.ConvertCommandAndResult.DeSerializeCommandResult(dataReceived);
+            result.Result = RemoveEmptyRow(result.Result);
+            return result;
+        }
+
+        private static byte[] ReceiveResult(ref int bytesReadSum, NetworkStream stream)
+        {
+            byte[] receivedData;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                StringBuilder responseData = new StringBuilder();
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    bytesReadSum += bytesRead;
+                    ms.Write(buffer, 0, bytesRead);
+                }
+                receivedData = ms.ToArray();
+            }
+
+            return receivedData;
+        }
+
+        private byte[] PrepareCommand(string command)
+        {
+            Command cmd = new Command(csb.ToString(), command);
+            string cmdJson = JetCS.Common.Serialization.ConvertCommandAndResult.SerializeCommand(cmd);
+            byte[] data;
+            if (compressedMode)
+            {
+                data = CompressionTools.CompressData(cmdJson);
+            }
+            else
+            {
+                data = Encoding.ASCII.GetBytes(cmdJson);
+            }
+
+            return data;
+        }
+
         //  Would rather do this via a custom Jsonconverter but just can't make it work right now
-        static DataTable RemoveEmptyRow(DataTable t)
+        static DataTable? RemoveEmptyRow(DataTable? t)
         {
             if (t != null)
             {

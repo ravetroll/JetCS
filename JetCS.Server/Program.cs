@@ -12,6 +12,8 @@ using Serilog.Events;
 using System.Configuration;
 using Topshelf.Configurators;
 using JetCS.Server.Internal.Database;
+using Newtonsoft.Json;
+using JetCS.Common.Serialization;
 
 
 
@@ -62,7 +64,7 @@ try
         .AddScoped<Databases>()
         .AddScoped<CommandDispatcher>()
         .AddScoped<SeedData>()
-        .AddSingleton<Server>()
+        .AddSingleton<Server>()        
         .AddSerilog(logger)
         .BuildServiceProvider();
     

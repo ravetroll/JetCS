@@ -29,7 +29,7 @@ namespace JetCS.ServerTest.Commands
             cli = ServerSetup.BuildJetCSClient("TEST1", "127.0.0.1", server.CompressedMode);
             var result = cli.SendCommand("SELECT 10,20");
             Assert.AreEqual("SELECT", result.CommandName);
-            Assert.AreEqual(result.Result.Rows[0].ItemArray[0], 10L);
+            Assert.AreEqual(result.Result.Rows[0].ItemArray[0], 10);
         }
 
         [TestMethod]
@@ -84,7 +84,7 @@ namespace JetCS.ServerTest.Commands
             cli = ServerSetup.BuildJetCSClient("TEST1", "127.0.0.1", "user1", "password", server.CompressedMode);
             var result = cli.SendCommand("SELECT 10,20");
             Assert.AreEqual("SELECT", result.CommandName);
-            Assert.AreEqual(result.Result.Rows[0].ItemArray[0], 10L);
+            Assert.AreEqual(result.Result.Rows[0].ItemArray[0], 10);
         }
 
         [TestMethod]
