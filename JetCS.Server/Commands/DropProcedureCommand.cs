@@ -12,15 +12,19 @@ namespace JetCS.Server.Commands
 {
     public class DropProcedureCommand : CommandBase, ICommand
     {
+        public DropProcedureCommand(Databases dbs) : base(dbs)
+        {
+        }
+
         public string Name => "DROP PROCEDURE";
 
         public string Description => $"SQL {Name} Statement";
 
        
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd)
         {
-            return await ExecuteNonQueryResultAsync(Name, cmd, databases);
+            return await ExecuteNonQueryResultAsync(Name, cmd);
         }
     }
 }

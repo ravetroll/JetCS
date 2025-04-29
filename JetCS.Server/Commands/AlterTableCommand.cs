@@ -12,14 +12,17 @@ namespace JetCS.Server.Commands
 {
     public class AlterTableCommand : CommandBase, ICommand
     {
+        public AlterTableCommand(Databases databases) : base(databases)
+        {
+        }
         public string Name => "ALTER TABLE";
 
         public string Description => $"SQL {Name} Statement";
 
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd)
         {
-            return await ExecuteNonQueryResultAsync(Name, cmd, databases);
+            return await ExecuteNonQueryResultAsync(Name, cmd);
         }
     }
 }

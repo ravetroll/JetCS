@@ -37,29 +37,84 @@ namespace JetCS.Common
 
             if (csb.Initialized)
             {
-               
-                
+
+                CommandResult result;
+                TcpClient client;
                 int bytesReadSum = 0;
-                var startTime = DateTime.Now;
-                TcpClient client = new TcpClient(csb.Server, csb.Port);
-                var endTime = DateTime.Now;
-                //Console.WriteLine($"Creates TcpClient in: {(endTime - startTime).TotalMilliseconds}ms");
+                
+                try
+                {
+                    client = new TcpClient(csb.Server, csb.Port);
+                }
+                catch (SocketException ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"Unable to connect to server: {ex.Message}" };
+                }
+                catch (Exception ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"An error occurred: {ex.Message}" };
+                }
+                
+                
                 NetworkStream stream;
-                stream = client.GetStream();
+
+                try
+                {
+                    stream = client.GetStream();
+                }
+                catch (Exception ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"Unable to get stream: {ex.Message}" };
+                }
 
                 // Send SQL INSERT statement to server
 
-                byte[] sendData = PrepareCommand(command);
-                stream.Write(sendData, 0, sendData.Length);
+                byte[] sendData;
+                try
+                {
+                    sendData = PrepareCommand(command);
+                   
+                }
+                catch (Exception ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"Unable to prepare command: {ex.Message}" };
+                }
+
+                try
+                {
+                    stream.Write(sendData, 0, sendData.Length);
+                }
+                catch (Exception ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"Unable to send command: {ex.Message}" };
+                }
 
                 // Receive response from server (optional)
-                byte[] receivedData = ReceiveResult(ref bytesReadSum, stream);              
+                byte[] receivedData;
 
-                CommandResult result = BuildResponse(receivedData, bytesReadSum);
+                try
+                {
+                    receivedData = ReceiveResult(ref bytesReadSum, stream);
+                }
+                catch (Exception ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"Unable to receive response: {ex.Message}" };
+                }
 
-                // Close connection
                 stream.Close();
                 client.Close();
+
+                try
+                {
+                    result = BuildResponse(receivedData, bytesReadSum);
+                }
+                catch (Exception ex)
+                {
+                    return new CommandResult() { ErrorMessage = $"Unable to build response: {ex.Message}" };
+                }
+
+                // Close connection
+               
                 return result;
 
 
@@ -90,6 +145,7 @@ namespace JetCS.Common
         private static byte[] ReceiveResult(ref int bytesReadSum, NetworkStream stream)
         {
             byte[] receivedData;
+            
             using (MemoryStream ms = new MemoryStream())
             {
                 StringBuilder responseData = new StringBuilder();
@@ -102,7 +158,7 @@ namespace JetCS.Common
                 }
                 receivedData = ms.ToArray();
             }
-
+            
             return receivedData;
         }
 

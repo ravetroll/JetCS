@@ -18,18 +18,18 @@ namespace JetCS.Server.Commands
 {
     public class CreateDatabaseCommand : CommandBase, ICommand
     {
-        
+        private readonly Databases databases;
 
-        public CreateDatabaseCommand()
+        public CreateDatabaseCommand(Databases databases): base(databases)
         {
-            
+            this.databases = databases;
         }
         public string Name => "CREATE DATABASE";
 
         public string Description => $"JetCS {Name} Statement";
 
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd)
         {
                        
             CommandResult commandResult = new(Name);

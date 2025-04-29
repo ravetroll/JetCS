@@ -13,8 +13,14 @@ namespace JetCS.Server.Commands
 {
     public abstract class CommandBase
     {
+        private readonly Databases dbs;
+
+        public CommandBase(Databases dbs)
+        {
+            this.dbs = dbs;
+        }
         public bool DataChange { get; } = true;        
-        public async Task<CommandResult> ExecuteNonQueryResultAsync(string name, Command cmd, Databases dbs)
+        public async Task<CommandResult> ExecuteNonQueryResultAsync(string name, Command cmd)
         {
 
 
@@ -66,7 +72,7 @@ namespace JetCS.Server.Commands
             return commandResult;
         }
 
-        public async Task<CommandResult> ExecuteQueryResultAsync(string name, Command cmd, Databases dbs)
+        public async Task<CommandResult> ExecuteQueryResultAsync(string name, Command cmd)
         {
 
 

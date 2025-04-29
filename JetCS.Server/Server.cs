@@ -118,14 +118,14 @@ namespace JetCS.Server
             try
             {
                 var startTime = DateTime.Now;
-
+                
                 using (NetworkStream stream = client.GetStream())
                 {
                     using (this.Databases)
                     {
                         
                         Command cmd = await GetCommandAsync(stream, cancellationToken);                       
-                        CommandResult commandResult = await ProcessCommandAsync(cmd, this.Databases);
+                        CommandResult commandResult = await ProcessCommandAsync(cmd);
                         await RespondCommandAsync(stream, commandResult, cancellationToken);
                     }
                 }
@@ -185,7 +185,7 @@ namespace JetCS.Server
             }
         }
 
-        private async Task<CommandResult> ProcessCommandAsync(Command cmd, Databases databases)
+        private async Task<CommandResult> ProcessCommandAsync(Command cmd)
         {
             CommandResult commandResult = new CommandResult();
             if (cmd.ErrorMessage == null)
@@ -193,7 +193,7 @@ namespace JetCS.Server
 
                 try
                 {
-                    commandResult = await commandDispatcher.DispatchAsync(cmd, databases);
+                    commandResult = await commandDispatcher.DispatchAsync(cmd);
                 }
                 catch (Exception ex)
                 {
@@ -304,7 +304,7 @@ namespace JetCS.Server
                     Log.Info("Beginning Server Startup");
                     db.Database.Migrate();
                     seed.SetDefault();
-                    dbs.SyncDatabaseToFiles();
+                    dbs.SyncDatabaseToFiles();                    
                     _cancellationTokenSource = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, 1549);
                     _listener.Start();

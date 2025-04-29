@@ -17,16 +17,16 @@ namespace JetCS.Server.Commands
     {
         private readonly Databases databases;
 
-        public AlterLoginCommand()
+        public AlterLoginCommand(Databases databases): base(databases)
         {
-
+            this.databases = databases;
         }
         public string Name => "ALTER LOGIN";
 
         public string Description => $"JetCS {Name} Statement; {Name} <login> <password> ADMIN";
 
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd)
         {
             
             CommandResult commandResult = new(Name);

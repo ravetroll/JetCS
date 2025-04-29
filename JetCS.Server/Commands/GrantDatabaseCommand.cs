@@ -22,17 +22,18 @@ namespace JetCS.Server.Commands
     {
         private readonly Databases databases;
 
-        public GrantDatabaseCommand()
+        public GrantDatabaseCommand(Databases databases): base(databases)
         {
-            
+            this.databases = databases;
         }
+       
         public string Name => "GRANT DATABASE";
 
         public string Description => $"JetCS {Name} Statement; ";
 
         
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd)
         {
                        
             CommandResult commandResult = new(Name);

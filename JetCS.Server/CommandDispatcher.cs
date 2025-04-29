@@ -17,28 +17,34 @@ namespace JetCS.Server
         
         private readonly Dictionary<string[],ICommand> commands = new Dictionary<string[], ICommand>();
         private readonly Databases dbs;
+        private readonly CommandFactory fact;
+
         //private static ReaderWriterLock rwl = new ReaderWriterLock();
 
-        public CommandDispatcher(Databases databases)
+        public CommandDispatcher(Databases databases, CommandFactory fact)
         {
             dbs = databases;
+            this.fact = fact;
             Assembly assembly = Assembly.GetExecutingAssembly();
             foreach (Type type in assembly.GetTypes())
             {
                 if (typeof(ICommand).IsAssignableFrom(type) && type.IsClass && !type.IsAbstract)
                 {
                     // Use Activator.CreateInstance with null check to avoid CS8600
-                    
-                    if (Activator.CreateInstance(type) is ICommand t)
+
+                    if (fact.Create(type) is ICommand t)
                     {
                         commands.Add(t.Identifiers, t);
                     }
+
+
                 }
             }
+
         }
 
 
-        public async Task<CommandResult> DispatchAsync(Command command, Databases databases) {
+        public async Task<CommandResult> DispatchAsync(Command command) {
             
             var matchingCommand = commands.FirstOrDefault(t => t.Key.Select(r => new Regex(r).IsMatch(command.CommandText.ToUpper())).Any(s => s == true)).Value;
 
@@ -46,7 +52,7 @@ namespace JetCS.Server
             {
                 CommandResult? result = null;
                 
-                result = await matchingCommand.ExecuteAsync(command, databases);
+                result = await matchingCommand.ExecuteAsync(command);
                 
                 return result;
 

@@ -96,10 +96,7 @@ namespace JetCS.Common.Serialization
             };
         }
 
-        //JsonConvert.DefaultSettings = () => new JsonSerializerSettings
-        //{
-        //    Converters = new List<JsonConverter> { new DataTableJsonConverter() }
-        //};
+     
 
 
         public override void WriteJson(JsonWriter writer, DataTable value, JsonSerializer serializer)

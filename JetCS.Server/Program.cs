@@ -14,6 +14,7 @@ using Topshelf.Configurators;
 using JetCS.Server.Internal.Database;
 using Newtonsoft.Json;
 using JetCS.Common.Serialization;
+using JetCS.Server.Internal.Extensions;
 
 
 
@@ -58,13 +59,15 @@ try
 
     //  Build DI
     serviceProvider = new ServiceCollection()
+        .AddCommands()
         .AddOptions()
         .AddSingleton<Config>(sp => { return config; })        
         .AddDbContext<JetCSDbContext>(options => options.UseJetOleDb($"Provider={config.Provider}; Data Source={Directory.GetCurrentDirectory()}\\JetCS.mdb;"))
         .AddScoped<Databases>()
         .AddScoped<CommandDispatcher>()
         .AddScoped<SeedData>()
-        .AddSingleton<Server>()        
+        .AddSingleton<Server>()
+        .AddScoped<CommandFactory>()        
         .AddSerilog(logger)
         .BuildServiceProvider();
     

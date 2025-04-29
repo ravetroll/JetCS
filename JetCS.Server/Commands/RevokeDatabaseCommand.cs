@@ -22,17 +22,20 @@ namespace JetCS.Server.Commands
     {
         private readonly Databases databases;
 
-        public RevokeDatabaseCommand()
+        public RevokeDatabaseCommand(Databases databases) : base(databases)
         {
-            
+            this.databases = databases;
         }
+   
+            
+     
         public string Name => "REVOKE DATABASE";
 
         public string Description => $"JetCS {Name} Statement";
 
         
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd, Databases databases)
+        public async Task<CommandResult> ExecuteAsync(Command cmd)
         {
                        
             CommandResult commandResult = new(Name);
