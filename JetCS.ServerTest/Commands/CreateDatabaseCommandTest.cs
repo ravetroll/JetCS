@@ -28,7 +28,7 @@ namespace JetCS.ServerTest.Commands
             var cli = ServerSetup.BuildJetCSClient("db", "127.0.0.1", server.CompressedMode);
             var result =cli.SendCommand("CREATE DATABASE TEST1");
             Assert.AreEqual("CREATE DATABASE", result.CommandName);
-            Assert.AreEqual( "TEST1", server.Databases.DbContext.Databases.Single(t => t.Name.ToUpper() == "TEST1").Name);
+            Assert.AreEqual( "TEST1", server.Databases.CreateDbContext().Databases.Single(t => t.Name.ToUpper() == "TEST1").Name);
             
         }
 
@@ -41,7 +41,7 @@ namespace JetCS.ServerTest.Commands
             cli.SendCommand("CREATE DATABASE TEST2");
             var result =cli.SendCommand("CREATE DATABASE TEST3");
             Assert.AreEqual("CREATE DATABASE", result.CommandName);
-            Assert.AreEqual(3, server.Databases.DbContext.Databases.Count());
+            Assert.AreEqual(3, server.Databases.CreateDbContext().Databases.Count());
             
         }
 

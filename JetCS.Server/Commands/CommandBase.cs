@@ -3,8 +3,10 @@ using JetCS.Common.Messaging;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Data.OleDb;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -61,7 +63,9 @@ namespace JetCS.Server.Commands
 
                     }
                 }
-            } catch (Exception ex)
+            }
+            
+            catch (Exception ex)
             {
                 commandResult.ErrorMessage = ex.Message;
             }
@@ -112,15 +116,7 @@ namespace JetCS.Server.Commands
                     using (OleDbCommand command = new OleDbCommand(cmd.CommandText, connection))
                     {
 
-                        //using (OleDbDataAdapter adapter = new OleDbDataAdapter(command))
-                        //{
-                        //    DataTable result = new DataTable();
-                        //    commandResult.RecordCount = adapter.Fill(result);
-                        //    // Adds a blank row so the columns can be serialized or we end up with an empty serialization string
-                        //    if (result.Rows.Count == 0) { result.Rows.Add(); }
-                        //    commandResult.Result = result;
-
-                        //}
+                       
                         DataTable dt = null;
                         using (var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess))
                         {

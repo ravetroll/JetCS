@@ -30,7 +30,7 @@ namespace JetCS.ServerTest.Commands
             result = cli.SendCommand("CREATE DATABASE TEST2");
             result = cli.SendCommand("DROP DATABASE TEST2");
             Assert.AreEqual("DROP DATABASE", result.CommandName);
-            Assert.AreEqual( 1, server.Databases.DbContext.Databases.Count());
+            Assert.AreEqual( 1, server.Databases.CreateDbContext().Databases.Count());
             
         }
 
@@ -46,7 +46,7 @@ namespace JetCS.ServerTest.Commands
             var result =cli.SendCommand("DROP DATABASE TEST3");
             result = cli.SendCommand("DROP DATABASE TEST2");
             Assert.AreEqual("DROP DATABASE", result.CommandName);
-            Assert.AreEqual(2, server.Databases.DbContext.Databases.Count());
+            Assert.AreEqual(2, server.Databases.CreateDbContext().Databases.Count());
             
         }
 

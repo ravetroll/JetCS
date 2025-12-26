@@ -1,5 +1,6 @@
 ﻿using JetCS.Common.Helpers;
 using JetCS.Persistence;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,22 +11,25 @@ namespace JetCS.Server
 {
     public class SeedData
     {
-        private readonly JetCSDbContext context;
+        private readonly IDbContextFactory<JetCSDbContext> dbContextFactory;
 
-        public SeedData(JetCSDbContext context)
+        public SeedData(IDbContextFactory<JetCSDbContext> dbContextFactory)
         {
-            this.context = context;
+            this.dbContextFactory = dbContextFactory;
         }
 
         public void SetDefault()
         {
-            if (context.Logins.Where(t=>(t.IsAdmin ?? false)==true).Count() == 0)
+            using (var dbContext = dbContextFactory.CreateDbContext())
             {
-                
-                var hash = PasswordTools.HashPassword("");
-                context.Logins.Add(new Domain.Login() { LoginName="admin",Hash=hash.Key,Salt=hash.Value, IsAdmin=true});
+                if (dbContext.Logins.Where(t => (t.IsAdmin ?? false) == true).Count() == 0)
+                {
+
+                    var hash = PasswordTools.HashPassword("");
+                    dbContext.Logins.Add(new Domain.Login() { LoginName = "admin", Hash = hash.Key, Salt = hash.Value, IsAdmin = true });
+                }
+                dbContext.SaveChanges();
             }
-            context.SaveChanges();
 
         }
     }

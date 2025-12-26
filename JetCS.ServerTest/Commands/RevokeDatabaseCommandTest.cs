@@ -82,11 +82,11 @@ namespace JetCS.ServerTest.Commands
             cli = ServerSetup.BuildJetCSClient("TEST1", "127.0.0.1", "user1", "password", server.CompressedMode);
             var result = cli.SendCommand("REVOKE DATABASE TEST1 USER1");
             Assert.AreEqual("REVOKE DATABASE", result.CommandName);
-            Assert.AreEqual(1,server.Databases.DbContext.DatabaseLogins.Count(t=>t.Database.Name == "TEST1" && t.Login.LoginName == "USER1"));
+            Assert.AreEqual(1,server.Databases.CreateDbContext().DatabaseLogins.Count(t=>t.Database.Name == "TEST1" && t.Login.LoginName == "USER1"));
             cli = ServerSetup.BuildJetCSClient("db", "127.0.0.1", server.CompressedMode);
             result = cli.SendCommand("REVOKE DATABASE TEST1 USER1");
             Assert.AreEqual("REVOKE DATABASE", result.CommandName);
-            Assert.AreEqual(0, server.Databases.DbContext.DatabaseLogins.Count(t => t.Database.Name == "TEST1" && t.Login.LoginName == "USER1"));
+            Assert.AreEqual(0, server.Databases.CreateDbContext().DatabaseLogins.Count(t => t.Database.Name == "TEST1" && t.Login.LoginName == "USER1"));
         }
 
         

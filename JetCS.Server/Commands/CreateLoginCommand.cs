@@ -56,7 +56,8 @@ namespace JetCS.Server.Commands
             try
             {
                 databases.EnterWriteLock("");
-                Login? login = await databases.DbContext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
+                var dbcontext = databases.CreateDbContext();
+                Login? login = await dbcontext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
                 if (login == null)
                 {
 
@@ -74,8 +75,8 @@ namespace JetCS.Server.Commands
                     {
                         login.IsAdmin = false;
                     }
-                    databases.DbContext.Add(login);
-                    commandResult.RecordCount = await databases.DbContext.SaveChangesAsync();
+                    dbcontext.Add(login);
+                    commandResult.RecordCount = await dbcontext.SaveChangesAsync();
                 }
                 else
                 {

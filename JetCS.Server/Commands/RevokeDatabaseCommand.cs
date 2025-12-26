@@ -65,11 +65,12 @@ namespace JetCS.Server.Commands
             try
             {
                 databases.EnterWriteLock("");
-                var databaseAlreadyAssigned = await databases.DbContext.DatabaseLogins.FirstOrDefaultAsync(t => t.Database.Name.ToUpper() == commandString[2].ToUpper() && t.Login.LoginName.ToUpper() == commandString[3].ToUpper());
+                var dbcontext = databases.CreateDbContext();
+                var databaseAlreadyAssigned = await dbcontext.DatabaseLogins.FirstOrDefaultAsync(t => t.Database.Name.ToUpper() == commandString[2].ToUpper() && t.Login.LoginName.ToUpper() == commandString[3].ToUpper());
                 if (databaseAlreadyAssigned != null)
                 {
-                    databases.DbContext.DatabaseLogins.Remove(databaseAlreadyAssigned);
-                    await databases.DbContext.SaveChangesAsync();
+                    dbcontext.DatabaseLogins.Remove(databaseAlreadyAssigned);
+                    await dbcontext.SaveChangesAsync();
                     commandResult.RecordCount = 1;
                 }
                 else

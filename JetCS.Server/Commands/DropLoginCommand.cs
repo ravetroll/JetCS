@@ -56,11 +56,12 @@ namespace JetCS.Server.Commands
             try
             {
                 databases.EnterWriteLock("");
-                Login? login = await databases.DbContext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
+                var dbcontext = databases.CreateDbContext();
+                Login? login = await dbcontext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
                 if (login != null)
                 {
-                    databases.DbContext.Logins.Remove(login);
-                    commandResult.RecordCount = databases.DbContext.SaveChanges();
+                    dbcontext.Logins.Remove(login);
+                    commandResult.RecordCount = dbcontext.SaveChanges();
                 }
                 else
                 {

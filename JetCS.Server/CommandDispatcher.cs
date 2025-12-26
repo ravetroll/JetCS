@@ -16,15 +16,13 @@ namespace JetCS.Server
     {
         
         private readonly Dictionary<string[],ICommand> commands = new Dictionary<string[], ICommand>();
-        private readonly Databases dbs;
-        private readonly CommandFactory fact;
+       
 
         //private static ReaderWriterLock rwl = new ReaderWriterLock();
 
-        public CommandDispatcher(Databases databases, CommandFactory fact)
+        public CommandDispatcher(CommandFactory fact)
         {
-            dbs = databases;
-            this.fact = fact;
+           
             Assembly assembly = Assembly.GetExecutingAssembly();
             foreach (Type type in assembly.GetTypes())
             {

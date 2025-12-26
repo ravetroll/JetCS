@@ -138,7 +138,7 @@ namespace JetCS.Common
                 dataReceived = Encoding.ASCII.GetString(receivedData);
             }
             CommandResult result = JetCS.Common.Serialization.ConvertCommandAndResult.DeSerializeCommandResult(dataReceived);
-            result.Result = RemoveEmptyRow(result.Result);
+            //result.Result = RemoveEmptyRow(result.Result);
             return result;
         }
 

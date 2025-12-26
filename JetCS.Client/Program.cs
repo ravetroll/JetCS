@@ -63,21 +63,23 @@ else if (choice == "2")
     {
         // Connect to the server
         ConnectionStringBuilder connStrBuild = new ConnectionStringBuilder("db", "127.0.0.1");
+
         string connStr = connStrBuild.ToString();
+        RunCommand(connStr, "CREATE DATABASE TEST2");
+        RunCommand(connStr, "CREATE LOGIN user2 password");
+        RunCommand(connStr, "GRANT DATABASE TEST2 user2");
         while (1 == 1)
         {
 
 
            
-            RunCommand(connStr, "CREATE DATABASE TEST2");
-            RunCommand(connStr, "CREATE LOGIN user2 password");
-            RunCommand(connStr, "GRANT DATABASE TEST2 user2");
+           
             connStrBuild = new ConnectionStringBuilder("TEST2", "127.0.0.1", "user2", "password");
             connStr = connStrBuild.ToString();
             RunCommand(connStr, "CREATE TABLE YourTable (ID COUNTER, Column1 VARCHAR, Column2 VARCHAR,CONSTRAINT [PrimaryKey] PRIMARY KEY ([ID]))");
             RunCommand(connStr, "INSERT INTO YourTable (Column1, Column2) VALUES ('Value1', 'Value2')");
             RunCommand(connStr, "SELECT * FROM YourTable");
-            RunCommand(connStr, "UPDATE YourTable SET Column2 = 'Value3'");
+            RunCommand(connStr, "UPDATE YourTable SET Column2 = 'Value3' WHERE Column1 = 'Value1'");
             //RunCommand(connStr, "INSERT INTO YourTable (Column1, Column2) SELECT Column1, Column2 FROM YourTable");
             RunCommand(connStr, "SELECT * FROM YourTable");
            

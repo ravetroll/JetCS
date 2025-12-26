@@ -1,45 +1,91 @@
 ﻿using EntityFrameworkCore.Jet.Data;
-using Microsoft.EntityFrameworkCore;
 using JetCS.Common.Helpers;
+using JetCS.Common.Messaging;
 using JetCS.Domain;
 using JetCS.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using JetCS.Common.Messaging;
-using System.Collections.Concurrent;
 
 namespace JetCS.Server
 {
     public class Databases: IDisposable
     {
        
-        private readonly Config config;
-        private readonly JetCSDbContext dbContext;
-        
+        private readonly Config config;       
+        private readonly ILogger<Databases> logger;
+        private readonly IDbContextFactory<JetCSDbContext> dbContextFactory;
         private static ConcurrentDictionary<string, ReaderWriterLockSlim> locks = new ConcurrentDictionary<string, ReaderWriterLockSlim>();
-        
+        private FileSystemWatcher databaseFileWatcher;
 
-        public Databases(Config config, JetCSDbContext db) {
-            this.config = config;  
-            this.dbContext = db;
+        public Databases(Config config, IDbContextFactory<JetCSDbContext> dbContextFactory, ILogger<Databases> logger) {
+            this.config = config; 
+            this.dbContextFactory = dbContextFactory; 
+            this.logger = logger;
             locks.TryAdd("", new ReaderWriterLockSlim());
-           
+            // Initialize the FileSystemWatcher
+            ActivateFileSystemWatcher();
+        }
+
+        private void ActivateFileSystemWatcher()
+        {   // Ensure the path exists
+            if (!Directory.Exists(config.DatabasePath))        
+            {            
+                logger.LogWarning($"Database path does not exist: {config.DatabasePath}");
+                return;        
+            }        
+            databaseFileWatcher = new FileSystemWatcher(config.DatabasePath, "*.mdb")
+            {            
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
+                EnableRaisingEvents = true // Activate the watcher
+            };        
+            databaseFileWatcher.Created += (s, e) =>
+            {            
+                logger.LogInformation($"Database file added: {e.FullPath}");
+                SyncDatabaseToFiles();
+            };        
+            databaseFileWatcher.Deleted += (s, e) =>
+            {            
+                logger.LogInformation($"Database file removed: {e.FullPath}");
+                SyncDatabaseToFiles();
+            };
+            databaseFileWatcher.Renamed += (s, e) =>
+            {            
+                logger.LogInformation($"Database file renamed: {e.FullPath}");
+                SyncDatabaseToFiles();
+            };        
+            logger.LogInformation("FileSystemWatcher started for database path: {Path}", config.DatabasePath);
+        }
+
+        public void DeactivateFileSystemWatcher()
+        {
+            if (databaseFileWatcher != null)
+            {
+                databaseFileWatcher.EnableRaisingEvents = false;
+                databaseFileWatcher.Dispose();
+                databaseFileWatcher = null;
+                logger.LogInformation("FileSystemWatcher stopped.");
+            }
         }
 
         public string Path => this.Configuration.DatabasePath;
 
 
         public Config Configuration => this.config;
-        public JetCSDbContext DbContext => dbContext;
+        
+        public JetCSDbContext CreateDbContext() => dbContextFactory.CreateDbContext();
 
         public string Provider => this.Configuration.Provider;
 
         public void Dispose()
         {
-                    
+            locks.Clear();
+            DeactivateFileSystemWatcher();
         }
 
         public void SyncDatabaseToFiles()
@@ -56,7 +102,10 @@ namespace JetCS.Server
                     Name = t.Name.Substring(0, t.Name.Length - 4),
                     FilePath = t.FullName
                 }).ToList();
-                
+
+                // Create a fresh DbContext for this operation
+                using var dbContext = dbContextFactory.CreateDbContext();
+
                 var dbs = dbContext.Databases.ToList();
                 var databasesNames = databases.Select(t => t.Name).ToList();
                 var dbsNames = dbs.Select(t => t.Name).ToList();
@@ -95,7 +144,8 @@ namespace JetCS.Server
                 {
                     File.Delete(path);
                 }
-                
+                // Create a fresh DbContext for this operation
+                using var dbContext = dbContextFactory.CreateDbContext();
                 var db = dbContext.Databases.FirstOrDefault(t => t.Name == name);
                 if (db != null)
                 {
@@ -115,6 +165,8 @@ namespace JetCS.Server
                 this.EnterWriteLock("");
                 PreciseDatabaseCreator cr = new();
                 cr.CreateDatabase(connectionString);
+                // Create a fresh DbContext for this operation
+                using var dbContext = dbContextFactory.CreateDbContext();
                 var db = dbContext.Databases.FirstOrDefault(t => t.Name == name);
                 if (db == null)
                 {
@@ -168,6 +220,8 @@ namespace JetCS.Server
             {
                 this.EnterReadLock("");
                 auth.LoginName = loginName;
+                // Create a fresh DbContext for this operation
+                using var dbContext = dbContextFactory.CreateDbContext();
                 var dblogin = await dbContext.Logins.Include(t => t.DatabaseLogins).ThenInclude(t => t.Database).FirstOrDefaultAsync(t => t.LoginName.ToLower() == loginName.ToLower());
                 if (dblogin == null)
                 {

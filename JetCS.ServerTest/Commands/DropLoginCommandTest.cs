@@ -27,10 +27,10 @@ namespace JetCS.ServerTest.Commands
             server = ServerSetup.BuildAndStartServer();
             var cli = ServerSetup.BuildJetCSClient("db", "127.0.0.1", server.CompressedMode);
             var result =cli.SendCommand("CREATE LOGIN user1 password");
-            Assert.AreEqual("user1", server.Databases.DbContext.Logins.Single(t => t.LoginName.ToUpper() == "USER1").LoginName);
+            Assert.AreEqual("user1", server.Databases.CreateDbContext().Logins.Single(t => t.LoginName.ToUpper() == "USER1").LoginName);
             result = cli.SendCommand("DROP LOGIN user1");
             Assert.AreEqual("DROP LOGIN", result.CommandName);
-            Assert.AreEqual(0,server.Databases.DbContext.Logins.Count(t => t.LoginName.ToUpper() == "USER1"));
+            Assert.AreEqual(0,server.Databases.CreateDbContext().Logins.Count(t => t.LoginName.ToUpper() == "USER1"));
             
         }
 
@@ -45,7 +45,7 @@ namespace JetCS.ServerTest.Commands
             result = cli.SendCommand("DROP LOGIN user2");
             result = cli.SendCommand("DROP LOGIN user3");
             Assert.AreEqual("DROP LOGIN", result.CommandName);
-            Assert.AreEqual(2, server.Databases.DbContext.Logins.Count());  // there is already the admin one.
+            Assert.AreEqual(2, server.Databases.CreateDbContext().Logins.Count());  // there is already the admin one.
             
         }
 

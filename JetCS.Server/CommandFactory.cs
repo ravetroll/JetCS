@@ -21,6 +21,7 @@ namespace JetCS.Server
         public object Create(Type type)
         {
             return _provider.GetRequiredService(type);
+            
         }
 
        

@@ -12,7 +12,6 @@ using Serilog.Events;
 using System.Configuration;
 using Topshelf.Configurators;
 using JetCS.Server.Internal.Database;
-using Newtonsoft.Json;
 using JetCS.Common.Serialization;
 using JetCS.Server.Internal.Extensions;
 
@@ -22,7 +21,8 @@ using JetCS.Server.Internal.Extensions;
 
 Config config = null;
 ServiceProvider serviceProvider = null;
-Serilog.ILogger logger = null;
+Microsoft.Extensions.Logging.ILogger logger = null;
+Serilog.ILogger serilogLogger = null;
 TopshelfExitCode rc = TopshelfExitCode.Ok;
 try
 {
@@ -42,36 +42,43 @@ try
 
     config = configRoot.GetSection("Config").Get<Config>() ?? new Config()
     {
-        DatabasePath = baseDir + "\\Data"
+        DatabasePath = baseDir + "\\Data"        
     };
 
-    // Get Logger
+    // Get Logger 
 
-    logger = new LoggerConfiguration()
-        .ReadFrom.Configuration(configRoot)
-        .CreateLogger();
-
-    // Detect if the OleDB Provider is valid and try some alernatives if not
-    var changedProvider = ProviderDetection.ApplyValidProvider(ref config);
-    if (changedProvider != null)
-        logger.Warning(changedProvider);
+    serilogLogger = new LoggerConfiguration().ReadFrom.Configuration(configRoot).MinimumLevel.Information().CreateLogger();
 
 
     //  Build DI
     serviceProvider = new ServiceCollection()
         .AddCommands()
         .AddOptions()
-        .AddSingleton<Config>(sp => { return config; })        
-        .AddDbContext<JetCSDbContext>(options => options.UseJetOleDb($"Provider={config.Provider}; Data Source={Directory.GetCurrentDirectory()}\\JetCS.mdb;"))
-        .AddScoped<Databases>()
-        .AddScoped<CommandDispatcher>()
-        .AddScoped<SeedData>()
-        .AddSingleton<Server>()
-        .AddScoped<CommandFactory>()        
-        .AddSerilog(logger)
-        .BuildServiceProvider();
-    
-    // Start Servicel
+        .AddSingleton<Config>(sp => { return config; })
+        .AddDbContextFactory<JetCSDbContext>(options => options.UseJetOleDb($"Provider={config.Provider}; Data Source={baseDir}\\JetCS.mdb;"))
+        .AddSingleton<Databases>()
+        .AddSingleton<CommandDispatcher>()
+        .AddSingleton<SeedData>()
+        .AddSingleton<Server>()        
+        .AddSingleton<CommandFactory>()
+        .AddLogging(loggingBuilder => 
+        { 
+            loggingBuilder.ClearProviders();
+            loggingBuilder.AddSerilog(serilogLogger, dispose: true);
+        })
+        .BuildServiceProvider(true);
+
+
+    logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Program");
+    logger.LogInformation("Service Provider built");
+
+    // Detect if the OleDB Provider is valid and try some alernatives if not
+    var changedProvider = ProviderDetection.ApplyValidProvider(ref config);
+    if (changedProvider != null)
+        logger.LogWarning(changedProvider);
+
+
+    // Start Service
     rc = HostFactory.Run(hostConfig =>
     {
         
@@ -79,7 +86,7 @@ try
         {
             Console.WriteLine("hostConfig Exception");
         });
-        hostConfig.UseSerilog(logger);
+        hostConfig.UseSerilog(serilogLogger);
         hostConfig.SetStartTimeout(TimeSpan.FromSeconds(10));
         hostConfig.SetStopTimeout(TimeSpan.FromSeconds(10));
         hostConfig.UseAssemblyInfoForServiceInfo();
@@ -99,7 +106,7 @@ try
        
         
     });
-
+    logger.LogInformation($"Service Ended with exit code {(int)rc}");
 
 
 
@@ -107,10 +114,7 @@ try
 catch(Exception ex)
 {
     if (logger != null)
-    logger.Error(ex, "Error in Program");
+    logger.LogError(ex, "Error in Program");
     
 }
-
-var exitCode = (int)Convert.ChangeType(rc, rc.GetTypeCode());
-//logger.Information(exitCode.ToString());
-Environment.ExitCode = exitCode;
+Environment.ExitCode = (int)rc;

@@ -28,7 +28,7 @@ namespace JetCS.ServerTest.Commands
             var cli = ServerSetup.BuildJetCSClient("db", "127.0.0.1", server.CompressedMode);
             var result =cli.SendCommand("CREATE LOGIN user1 password");
             Assert.AreEqual("CREATE LOGIN", result.CommandName);
-            Assert.AreEqual("user1",server.Databases.DbContext.Logins.Single(t => t.LoginName.ToUpper() == "USER1").LoginName);
+            Assert.AreEqual("user1",server.Databases.CreateDbContext().Logins.Single(t => t.LoginName.ToUpper() == "USER1").LoginName);
             
         }
 
@@ -42,7 +42,7 @@ namespace JetCS.ServerTest.Commands
             result = cli.SendCommand("CREATE LOGIN user3 password");
             
             Assert.AreEqual("CREATE LOGIN", result.CommandName);
-            Assert.AreEqual(4, server.Databases.DbContext.Logins.Count());  // there is already the admin one.
+            Assert.AreEqual(4, server.Databases.CreateDbContext().Logins.Count());  // there is already the admin one.
             
         }
 

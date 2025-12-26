@@ -62,11 +62,12 @@ namespace JetCS.Server.Commands
             try
             {
                 databases.EnterWriteLock("");
-                var databaseAlreadyAssigned = await databases.DbContext.DatabaseLogins.FirstOrDefaultAsync(t => t.Database.Name.ToUpper() == commandString[2].ToUpper() && t.Login.LoginName.ToUpper() == commandString[3].ToUpper());
+                var dbcontext = databases.CreateDbContext();
+                var databaseAlreadyAssigned = await dbcontext.DatabaseLogins.FirstOrDefaultAsync(t => t.Database.Name.ToUpper() == commandString[2].ToUpper() && t.Login.LoginName.ToUpper() == commandString[3].ToUpper());
                 if (databaseAlreadyAssigned == null)
                 {
-                    Database? dbAssign = await databases.DbContext.Databases.FirstOrDefaultAsync(t => t.Name.ToUpper() == commandString[2].ToUpper());
-                    Login? loginAssign = await databases.DbContext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToUpper() == commandString[3].ToUpper());
+                    Database? dbAssign = await dbcontext.Databases.FirstOrDefaultAsync(t => t.Name.ToUpper() == commandString[2].ToUpper());
+                    Login? loginAssign = await dbcontext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToUpper() == commandString[3].ToUpper());
                     if (loginAssign == null)
                     {
                         commandResult.ErrorMessage = $"Invalid Login '{commandString[3]}'";
@@ -78,8 +79,8 @@ namespace JetCS.Server.Commands
                     if (loginAssign != null && dbAssign != null)
                     {
                         DatabaseLogin dbl = new DatabaseLogin() { Database = dbAssign, Login = loginAssign };
-                        databases.DbContext.DatabaseLogins.Add(dbl);
-                        await databases.DbContext.SaveChangesAsync();
+                        dbcontext.DatabaseLogins.Add(dbl);
+                        await dbcontext.SaveChangesAsync();
                         commandResult.RecordCount = 1;
                     }
 

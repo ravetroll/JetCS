@@ -4,6 +4,7 @@
     "Provider": "Microsoft.Jet.OLEDB.4.0",
     "ListenPort": 1549,
     "CompressedMode": true,
+    "SingleClient":  false,
     "Limits": {
       "MaxClients": 10,
       "MaxCommandSizeBytes": 1048576,

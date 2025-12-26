@@ -66,6 +66,10 @@ namespace JetCS.Common
                     {
                         result = false;
                     }
+                    else
+                    {
+                        if (providerValue != providerIn) result = false;
+                    }
                     if (!dict.TryGetValue(databaseKey.ToLower(), out databaseIn))
                     {
                         result = false;
@@ -116,9 +120,17 @@ namespace JetCS.Common
             }
             return result;
         }
+        public static string ProviderKey { get { return providerKey; } }
+        public static string DatabaseKey { get { return databaseKey; } }
+        public static string ServerKey { get { return serverKey; } }
+        public static string PortKey { get { return portKey; } }
+        public static string LoginKey { get { return loginKey; } }
+        public static string PasswordKey { get { return passwordKey; } }
+
+
 
         public string Database => databaseValue;
-        public string Provider => providerKey;
+        public static string Provider => providerValue;
         public string Server => serverValue;
         public int Port => portValue;
         public bool Initialized => initialized;

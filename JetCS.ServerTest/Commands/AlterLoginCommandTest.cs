@@ -1,4 +1,5 @@
-﻿using System;
+﻿using JetCS.Common.Messaging;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -33,13 +34,14 @@ namespace JetCS.ServerTest.Commands
         [TestMethod]
         public void IncorrectLoginPasswordTest()
         {
+            CommandResult result;   
             server = ServerSetup.BuildAndStartServer();
             var cli = ServerSetup.BuildJetCSClient("db", "127.0.0.1", server.CompressedMode);
-            cli.SendCommand("CREATE DATABASE TEST1");
-            cli.SendCommand("CREATE LOGIN USER1 password ADMIN");
-            cli.SendCommand("GRANT DATABASE test1 user1");
+            result= cli.SendCommand("CREATE DATABASE TEST1");
+            result=cli.SendCommand("CREATE LOGIN USER1 password ADMIN");
+            result =cli.SendCommand("GRANT DATABASE test1 user1");
             cli = ServerSetup.BuildJetCSClient("TEST1", "127.0.0.1", "user1", "password1", server.CompressedMode);
-            var result = cli.SendCommand("ALTER LOGIN user1 password1 ADMIN");
+            result = cli.SendCommand("ALTER LOGIN user1 password1 ADMIN");
             Assert.AreEqual("ALTER LOGIN", result.CommandName);
             Assert.AreEqual("Invalid Password", result.ErrorMessage);
         }

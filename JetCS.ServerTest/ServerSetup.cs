@@ -3,10 +3,12 @@ using JetCS.Common.Serialization;
 using JetCS.Domain;
 using JetCS.Persistence;
 using JetCS.Server;
+using JetCS.Server.Internal.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -41,13 +43,22 @@ namespace JetCS.ServerTest
             // Creates DI container
             serviceProvider = new ServiceCollection()
                 .AddOptions()
+                .AddCommands()
                 .AddScoped(sp => { return config; })
                 .Configure<Config>(t => t = config)
-                .AddDbContext<JetCSDbContext>(options => options.UseJetOleDb($"Provider={config.Provider}; Data Source={Directory.GetCurrentDirectory()}\\JetCS.mdb;"))
-                .AddScoped<Databases>()
+                .AddDbContextFactory<JetCSDbContext>(options => options.UseJetOleDb($"Provider={config.Provider}; Data Source={baseDir}\\JetCS.mdb;"))
+                .AddSingleton<Databases>()
                 .AddScoped<CommandDispatcher>()
                 .AddScoped<SeedData>()
                 .AddSingleton<JetCS.Server.Server>()
+                .AddSingleton<CommandFactory>()
+                .AddLogging(loggingBuilder =>
+                {
+                    loggingBuilder.AddSerilog(new Serilog.LoggerConfiguration()
+                        .MinimumLevel.Debug()
+                        .WriteTo.Console()
+                        .CreateLogger());
+                })
                 .BuildServiceProvider();
             JetCS.Server.Server server = serviceProvider.GetRequiredService<JetCS.Server.Server>();
             server.Reset();
