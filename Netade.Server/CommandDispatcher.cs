@@ -42,7 +42,7 @@ namespace Netade.Server
         }
 
 
-        public async Task<CommandResult> DispatchAsync(Command command) {
+        public async Task<CommandResult> DispatchAsync(Command command, CancellationToken cancellationToken) {
             
             var matchingCommand = commands.FirstOrDefault(t => t.Key.Select(r => new Regex(r).IsMatch(command.CommandText.ToUpper())).Any(s => s == true)).Value;
 
@@ -50,7 +50,7 @@ namespace Netade.Server
             {
                 CommandResult? result = null;
                 
-                result = await matchingCommand.ExecuteAsync(command);
+                result = await matchingCommand.ExecuteAsync(command, cancellationToken);
                 
                 return result;
 

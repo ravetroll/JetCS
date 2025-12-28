@@ -10,7 +10,7 @@ namespace Netade.Common
     public class ConnectionStringBuilder
     {
         private const string providerKey = "Provider";
-        private const string providerValue = "sqlNetade";
+        private const string providerValue = "sqlnetade";
         private const string databaseKey = "Database";
         private const string serverKey = "Server";
         private const string portKey = "Port";

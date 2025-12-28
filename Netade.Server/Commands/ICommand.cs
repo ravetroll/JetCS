@@ -15,7 +15,7 @@ namespace Netade.Server.Commands
         string Description { get; }        
         string[] Identifiers { get; }
         bool DataChange { get; } 
-        Task<CommandResult> ExecuteAsync(Command cmd);
+        Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken);
 
         
      

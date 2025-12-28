@@ -9,7 +9,7 @@ namespace Netade.Server
     public class Config
     {
         public string DatabasePath { get; set; }
-        public string Provider { get; set; } = "Microsoft.Jet.OLEDB.4.0";
+        public string Provider { get; set; } = "Microsoft.ACE.OLEDB.16.0";
         public int ListenPort { get; set; } = 1549;
         public bool CompressedMode { get; set; } = true;
         public bool SingleClient { get; set; } = false;

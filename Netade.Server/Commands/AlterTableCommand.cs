@@ -20,9 +20,9 @@ namespace Netade.Server.Commands
         public string Description => $"SQL {Name} Statement";
 
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
         {
-            return await ExecuteNonQueryResultAsync(Name, cmd);
+            return await ExecuteNonQueryResultAsync(Name, cmd, cancellationToken);
         }
     }
 }

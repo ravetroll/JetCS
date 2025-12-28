@@ -21,8 +21,8 @@ namespace Netade.Server.Commands
         {
             this.dbs = dbs;
         }
-        public bool DataChange { get; } = true;        
-        public async Task<CommandResult> ExecuteNonQueryResultAsync(string name, Command cmd)
+        public virtual bool DataChange => true;
+        public async Task<CommandResult> ExecuteNonQueryResultAsync(string name, Command cmd, CancellationToken cancellationToken)
         {
 
 
@@ -35,7 +35,7 @@ namespace Netade.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password);
+            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password, cancellationToken);
             if (!auth.Authenticated) {
                 return commandResult.SetErrorMessage(auth.StatusMessage);        
             }
@@ -52,14 +52,15 @@ namespace Netade.Server.Commands
             }
             try
             {
-                dbs.EnterWriteLock(csb.Database);
+                // Enter write lock
+                await using var _ = await dbs.EnterWriteAsync(csb.Database, cancellationToken).ConfigureAwait(false);
                 using (OleDbConnection connection = new OleDbConnection(connectionString))
                 {
-                    connection.Open();
+                    await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
                     using (OleDbCommand command = new OleDbCommand(cmd.CommandText, connection))
                     {
-                        commandResult.RecordCount = await command.ExecuteNonQueryAsync();
+                        commandResult.RecordCount = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
                     }
                 }
@@ -69,14 +70,11 @@ namespace Netade.Server.Commands
             {
                 commandResult.ErrorMessage = ex.Message;
             }
-            finally
-            {
-                dbs.ExitWriteLock(csb.Database);
-            }
+            
             return commandResult;
         }
 
-        public async Task<CommandResult> ExecuteQueryResultAsync(string name, Command cmd)
+        public async Task<CommandResult> ExecuteQueryResultAsync(string name, Command cmd, CancellationToken cancellationToken)
         {
 
 
@@ -89,7 +87,7 @@ namespace Netade.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password);
+            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password, cancellationToken);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -108,26 +106,27 @@ namespace Netade.Server.Commands
             }
             try
             {
-                dbs.EnterReadLock(csb.Database);
+                // Enter read lock
+                await using var _ = await dbs.EnterReadAsync(csb.Database, cancellationToken).ConfigureAwait(false);
                 using (OleDbConnection connection = new OleDbConnection(connectionString))
                 {
-                    connection.Open();
+                    await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
                     using (OleDbCommand command = new OleDbCommand(cmd.CommandText, connection))
                     {
 
                        
                         DataTable dt = null;
-                        using (var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess))
+                        using (var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess,cancellationToken).ConfigureAwait(false))
                         {
 
-                            DataTable schemaTable = await reader.GetSchemaTableAsync();
+                            DataTable? schemaTable = await reader.GetSchemaTableAsync(cancellationToken).ConfigureAwait(false);
                             dt = new DataTable();
                             foreach (DataRow row in schemaTable.Rows)
                                 dt.Columns.Add(row.Field<string>("ColumnName"), row.Field<Type>("DataType"));
 
 
-                            while (await reader.ReadAsync())
+                            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                             {
                                 DataRow dr = dt.Rows.Add();
                                 foreach (DataColumn col in dt.Columns)
@@ -143,10 +142,7 @@ namespace Netade.Server.Commands
             {
                 commandResult.ErrorMessage = ex.Message;
             }
-            finally
-            {
-                dbs.ExitReadLock(csb.Database);
-            }
+            
 
                         
             return commandResult;

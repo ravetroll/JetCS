@@ -16,7 +16,7 @@ namespace Netade.Server.Commands
         public SelectCommand(Databases dbs) : base(dbs)
         {
         }
-        public new bool DataChange { get; } = false;
+        public override bool DataChange => false;
 
         public string Name => "SELECT";
 
@@ -25,9 +25,9 @@ namespace Netade.Server.Commands
        
         public string[] Identifiers => ["^(?!.*INTO).*SELECT.*$"];
 
-        public async Task<CommandResult> ExecuteAsync(Command cmd)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
         {
-            return await ExecuteQueryResultAsync(Name, cmd);
+            return await ExecuteQueryResultAsync(Name, cmd, cancellationToken);
         }
     }
 }

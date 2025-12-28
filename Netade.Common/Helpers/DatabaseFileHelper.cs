@@ -10,7 +10,7 @@ namespace Netade.Common.Helpers
     {
         public static string GetNameFromPath(FileInfo t)
         {
-            return t.Name.Substring(0, t.Name.Length - (t.Extension.Length + 1));
+            return t.Name.Substring(0, t.Name.Length - (t.Extension.Length));
         }
     }
 }

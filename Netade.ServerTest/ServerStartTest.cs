@@ -24,11 +24,14 @@ namespace Netade.ServerTest
         [TestMethod]
         public void StartStop()
         {
+            var host = new TestHostControl();
             server = ServerSetup.BuildServer();
-            server.Start();
+            server.Start(host);
             Assert.IsTrue(server.IsRunning);
+            Assert.AreEqual(0, host.StopCalls);
             server.Stop();
             Assert.IsFalse(server.IsRunning);
+           
 
         }
 

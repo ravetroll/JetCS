@@ -11,10 +11,9 @@ using Serilog.Configuration;
 using Serilog.Events;
 using System.Configuration;
 using Topshelf.Configurators;
-
 using Netade.Common.Serialization;
 using Netade.Server.Internal.Extensions;
-using Netade.Server.Internal.Database;
+using Netade.Server.Services;
 
 
 
@@ -60,7 +59,8 @@ try
         .AddSingleton<Databases>()
         .AddSingleton<CommandDispatcher>()
         .AddSingleton<SeedData>()
-        .AddSingleton<Server>()        
+        .AddSingleton<Server>()
+        .AddSingleton<ProviderDetectionService>()
         .AddSingleton<CommandFactory>()
         .AddLogging(loggingBuilder => 
         { 
@@ -72,12 +72,6 @@ try
 
     logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Program");
     logger.LogInformation("Service Provider built");
-
-    // Detect if the OleDB Provider is valid and try some alernatives if not
-    var changedProvider = ProviderDetection.ApplyValidProvider(ref config, true);
-    if (changedProvider != null)
-        logger.LogWarning(changedProvider);
-
 
     // Start Service
     rc = HostFactory.Run(hostConfig =>
@@ -96,7 +90,7 @@ try
 
             serviceConfig.ConstructUsing(() => serviceProvider.GetRequiredService<Server>());
             
-            serviceConfig.WhenStarted(server => server.Start());
+            serviceConfig.WhenStarted((server,hostControl) => server.Start(hostControl));
             serviceConfig.WhenStopped(server => server.Stop());
 
         });

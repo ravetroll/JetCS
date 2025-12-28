@@ -1,12 +1,13 @@
-﻿using Netade.Common;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Netade.Common;
 using Netade.Common.Serialization;
 using Netade.Domain;
 using Netade.Persistence;
 using Netade.Server;
 using Netade.Server.Internal.Extensions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using Netade.Server.Services;
 using Newtonsoft.Json;
 using Serilog;
 using System;
@@ -52,6 +53,7 @@ namespace Netade.ServerTest
                 .AddScoped<SeedData>()
                 .AddSingleton<Netade.Server.Server>()
                 .AddSingleton<CommandFactory>()
+                .AddSingleton<ProviderDetectionService>()
                 .AddLogging(loggingBuilder =>
                 {
                     loggingBuilder.AddSerilog(new Serilog.LoggerConfiguration()
@@ -68,7 +70,8 @@ namespace Netade.ServerTest
         public static Netade.Server.Server BuildAndStartServer()
         {
             var server = BuildServer();
-            server.Start();
+            var host = new TestHostControl();
+            server.Start(host);
             return server;
         }
 

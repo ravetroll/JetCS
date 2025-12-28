@@ -1,18 +1,5 @@
 ﻿using Netade.Common.Messaging;
-using Netade.Persistence;
-using System;
-using System.Collections.Generic;
-using System.Data.OleDb;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
-
 using Netade.Common;
-using System.Net;
-using System.Xml.Linq;
-using System.Diagnostics.Eventing.Reader;
 
 namespace Netade.Server.Commands
 {
@@ -20,69 +7,76 @@ namespace Netade.Server.Commands
     {
         private readonly Databases databases;
 
-        public CreateDatabaseCommand(Databases databases): base(databases)
+        public CreateDatabaseCommand(Databases databases) : base(databases)
         {
             this.databases = databases;
         }
+
         public string Name => "CREATE DATABASE";
-
         public string Description => $"Netade {Name} Statement";
-
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd)
-        {
-                       
-            CommandResult commandResult = new(Name);
-            ConnectionStringBuilder csb = new ConnectionStringBuilder(cmd.ConnectionString);
-            
-            if (!csb.Initialized)
-            {
-                return commandResult.SetErrorMessage($"Connection string {csb} format is incorrect");
-            }
 
-            //  Authentication and Authorization
-            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
+        public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
+        {
+            CommandResult commandResult = new(Name);
+
+            ConnectionStringBuilder csb = new ConnectionStringBuilder(cmd.ConnectionString);
+            if (!csb.Initialized)
+                return commandResult.SetErrorMessage($"Connection string {csb} format is incorrect");
+
+            // Authentication and Authorization
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password, cancellationToken);
             if (!auth.Authenticated)
-            {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
-            }
 
             if (!auth.IsAdmin)
+                return commandResult.SetErrorMessage("This command required admin priviledges");
+
+            // Expected:
+            //   CREATE DATABASE <name> [type]
+            // where type is optional: mdb | accdb | .mdb | .accdb | auto
+            var parts = cmd.CommandText
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (parts.Length is < 3 or > 4)
+                return commandResult.SetErrorMessage(
+                    $"Invalid '{Name}' Command:{cmd.CommandText} (expected: CREATE DATABASE <name> [mdb|accdb|auto])");
+
+            var dbName = parts[2];
+
+            if (dbName.IndexOfAny(Path.GetInvalidFileNameChars()) != -1)
             {
-                return commandResult.SetErrorMessage($"This command required admin priviledges");
+                var badIndex = dbName.IndexOfAny(Path.GetInvalidFileNameChars());
+                return commandResult.SetErrorMessage(
+                    $"Invalid character '{dbName.Substring(badIndex, 1)}' in database name");
             }
 
-            string[] commandString = cmd.CommandText.Split(" ");
-            if (commandString.Length != 3)
-            {
-                return commandResult.SetErrorMessage($"Invalid '{Name}' Command:{cmd.CommandText}");
-            }
-            if (commandString.Last().IndexOfAny(Path.GetInvalidFileNameChars()) != -1)
-            {
-                return commandResult.SetErrorMessage($"Invalid character '{commandString[2].Substring(commandString.Last().IndexOfAny(System.IO.Path.GetInvalidFileNameChars()), 1)}' in database name");
-            }
-            
-            // Connection string for the Jet MDB database
-            string connectionString = databases.CreateDatabaseConnectionString(commandString.Last());
-            if (connectionString != "")
-            {
+            // Optional 4th token
+            var type = parts.Length == 4 ? parts[3] : "auto";
 
-                databases.CreateDatabase(commandString[2],connectionString);
+            try
+            {
+                // Databases.CreateDatabase(name, type) is the updated API you added
+                await databases.CreateDatabaseAsync(dbName, type, cancellationToken);
+
                 commandResult.RecordCount = 1;
+                return commandResult;
             }
-            else
+            catch (InvalidOperationException ex)
             {
-                commandResult.ErrorMessage = $"Database {commandString[2]} already exists";
+                // e.g. "Database already exists" or "Neither ACCDB nor MDB creation is available..."
+                return commandResult.SetErrorMessage(ex.Message);
             }
-            
-            
-                    
-                   
-            
-            return commandResult;
-
+            catch (NotSupportedException ex)
+            {
+                // e.g. requested type not supported by provider
+                return commandResult.SetErrorMessage(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                // e.g. invalid type token
+                return commandResult.SetErrorMessage(ex.Message);
+            }
         }
-
-        
     }
 }

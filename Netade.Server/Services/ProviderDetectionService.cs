@@ -7,9 +7,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
-namespace Netade.Server.Internal.Database
+namespace Netade.Server.Services
 {
-    public static class ProviderDetection
+    public class ProviderDetectionService
     {
         // 64-bit-only policy: only ACE candidates.
         private static readonly string[] DefaultCandidatesX64 =
@@ -18,30 +18,9 @@ namespace Netade.Server.Internal.Database
         "Microsoft.ACE.OLEDB.12.0",
     };
 
-        /// <summary>
-        /// Validates configured provider; if invalid, selects first provider that can:
-        /// 1) create+open an MDB (DAO + OLE DB)
-        /// 2) and (optionally) create+open an ACCDB (DAO + OLE DB)
-        ///
-        /// Returns null if no change was made; otherwise returns a message.
-        /// Throws on failure (recommended at startup).
-        /// </summary>
-        public static string? ApplyValidProvider(ref Config config, bool requireAccdbCreate = false)
-        {
-            var result = Detect(config.Provider, requireAccdbCreate);
 
-            if (!result.IsUsable)
-                throw new InvalidOperationException(result.Message);
 
-            if (string.Equals(result.SelectedProvider, config.Provider, StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            var old = config.Provider;
-            config.Provider = result.SelectedProvider!;
-            return $"Provider changed from '{old}' to '{config.Provider}'. {result.Message}";
-        }
-
-        public static ProviderDetectionResult Detect(string? configuredProvider, bool requireAccdbCreate = false)
+        public ProviderDetectionResult Detect(string? configuredProvider)
         {
             if (!Environment.Is64BitProcess)
             {
@@ -51,49 +30,87 @@ namespace Netade.Server.Internal.Database
 
             var candidates = BuildCandidateList(configuredProvider);
 
+            // Record everything for diagnostics (all candidates, both probes).
             var attempts = new List<ProviderProbeAttempt>(capacity: candidates.Count * 2);
+
+            // Track the best usable provider found so far.
+            string? bestProvider = null;
+            bool bestMdb = false;
+            bool bestAccdb = false;
 
             foreach (var provider in candidates)
             {
-                // 1) MDB (required baseline)
                 var mdbAttempt = ProbeCreateAndOpen(provider, ".mdb", DatabaseVersion.Version40);
                 attempts.Add(mdbAttempt);
 
-                if (!mdbAttempt.Success)
-                    continue;
-
-                // 2) ACCDB (optional/required based on requireAccdbCreate)
                 var accdbAttempt = ProbeCreateAndOpen(provider, ".accdb", DatabaseVersion.Version120);
                 attempts.Add(accdbAttempt);
 
-                if (requireAccdbCreate && !accdbAttempt.Success)
+                var canMdb = mdbAttempt.Success;
+                var canAccdb = accdbAttempt.Success;
+
+                // Not usable if neither works.
+                if (!canMdb && !canAccdb)
                     continue;
 
-                // Success condition:
-                // - MDB create+open succeeded
-                // - and if requireAccdbCreate==true, ACCDB create+open succeeded
-                var msg = requireAccdbCreate
-                    ? $"Selected '{provider}'. MDB+ACCDB create/open probes succeeded."
-                    : $"Selected '{provider}'. MDB create/open probe succeeded. ACCDB create/open: {(accdbAttempt.Success ? "OK" : "FAILED (feature will be unavailable)")}.";
+                // If this provider supports both, it’s immediately best.
+                if (canMdb && canAccdb)
+                {
+                    var msg = $"Selected '{provider}'. MDB create/open: OK. ACCDB create/open: OK.";
+                    return ProviderDetectionResult.Ok(
+                        selectedProvider: provider,
+                        canCreateMdb: true,
+                        canCreateAccdb: true,
+                        message: msg,
+                        attempts: attempts);
+                }
+
+                // Otherwise, keep the best single-capability provider.
+                // Preference order: ACCDB-only > MDB-only (you can flip this if you prefer MDB).
+                var isBetter =
+                    bestProvider is null ||
+                    (!bestAccdb && canAccdb) ||           // prefer gaining ACCDB capability
+                    (bestAccdb == canAccdb && !bestMdb && canMdb); // then MDB if same ACCDB-ness
+
+                if (isBetter)
+                {
+                    bestProvider = provider;
+                    bestMdb = canMdb;
+                    bestAccdb = canAccdb;
+                }
+            }
+
+            // If we found at least one usable provider, return it (single capability).
+            if (bestProvider is not null)
+            {
+                var msg =
+                    $"Selected '{bestProvider}'. " +
+                    $"MDB create/open: {(bestMdb ? "OK" : "FAILED")}. " +
+                    $"ACCDB create/open: {(bestAccdb ? "OK" : "FAILED")}.";
 
                 return ProviderDetectionResult.Ok(
-                    selectedProvider: provider,
-                    canCreateMdb: true,
-                    canCreateAccdb: accdbAttempt.Success,
+                    selectedProvider: bestProvider,
+                    canCreateMdb: bestMdb,
+                    canCreateAccdb: bestAccdb,
                     message: msg,
                     attempts: attempts);
             }
 
-            var detail = string.Join(Environment.NewLine, attempts.Select(a => $"- {a.Provider} {a.TargetExt}: {a.Summary}"));
+            // Nothing worked.
+            var detail = string.Join(
+                Environment.NewLine,
+                attempts.Select(a => $"- {a.Provider} {a.TargetExt}: {a.Summary}"));
 
-            var failure = "No usable OLE DB/DAO combination found. Install the Microsoft Access Database Engine (x64)."
-                          + Environment.NewLine
-                          + detail;
+            var failure =
+                "No usable OLE DB/DAO combination found. Install the Microsoft Access Database Engine (x64)." +
+                Environment.NewLine +
+                detail;
 
             return ProviderDetectionResult.Fail(failure, attempts);
         }
 
-        private static List<string> BuildCandidateList(string? configuredProvider)
+
+        private List<string> BuildCandidateList(string? configuredProvider)
         {
             var list = new List<string>();
 
@@ -108,7 +125,7 @@ namespace Netade.Server.Internal.Database
                 .ToList();
         }
 
-        private static ProviderProbeAttempt ProbeCreateAndOpen(string providerName, string ext, DatabaseVersion createVersion)
+        private ProviderProbeAttempt ProbeCreateAndOpen(string providerName, string ext, DatabaseVersion createVersion)
         {
             var sw = Stopwatch.StartNew();
 
@@ -164,7 +181,7 @@ namespace Netade.Server.Internal.Database
             }
         }
 
-        private static void TryDelete(string filePath)
+        private void TryDelete(string filePath)
         {
             try
             {

@@ -30,7 +30,7 @@ namespace Netade.Server.Commands
 
        
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
         {
                      
             CommandResult commandResult = new(Name);
@@ -41,7 +41,7 @@ namespace Netade.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password,cancellationToken);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -62,7 +62,7 @@ namespace Netade.Server.Commands
             if (connectionString != "")
             {
 
-                databases.DeleteDatabase(commandString[2]);
+                await databases.DeleteDatabaseAsync(commandString[2],cancellationToken);
                 commandResult.RecordCount = 1;
             }
             else

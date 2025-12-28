@@ -26,7 +26,7 @@ namespace Netade.Server.Commands
 
         
         public string[] Identifiers => [$"^{Name}"];
-        public async Task<CommandResult> ExecuteAsync(Command cmd)
+        public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
         {
             
             CommandResult commandResult = new(Name);
@@ -37,7 +37,7 @@ namespace Netade.Server.Commands
             }
 
             //  Authentication and Authorization
-            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password);
+            var auth = await databases.LoginWithoutDatabaseAsync(csb.Login, csb.Password, cancellationToken);
             if (!auth.Authenticated)
             {
                 return commandResult.SetErrorMessage(auth.StatusMessage);
@@ -55,7 +55,7 @@ namespace Netade.Server.Commands
 
             try
             {
-                databases.EnterWriteLock("");
+                await using var _ = await databases.EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
                 var dbcontext = databases.CreateDbContext();
                 Login? login = await dbcontext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
                 if (login != null)
@@ -70,7 +70,7 @@ namespace Netade.Server.Commands
             }
             finally
             {
-                databases.ExitWriteLock("");
+                
             }
             
            

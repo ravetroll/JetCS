@@ -19,11 +19,14 @@ using System.Text;
 using System.Threading.Tasks;
 using Topshelf.Logging;
 using Topshelf.Options;
+using Netade.Server.Services;
+using Topshelf;
 
 namespace Netade.Server
 {
     public class Server:  IDisposable
     {
+        
         private TcpListener _listener;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly IConfiguration config;
@@ -31,15 +34,16 @@ namespace Netade.Server
         private readonly IServiceScopeFactory scopeFactory;
         private readonly Config cfg;
         private readonly ILogger<Server> log;
+
         private Databases dbs;
-        private SeedData seed;
+        
         
         private CommandDispatcher commandDispatcher;
         private bool isRunning = false;        
         
 
         private SemaphoreSlim clientsLimit;
-        public Server(Config config, CommandDispatcher commandDispatcher,Databases databases, IServiceScopeFactory scopeFactory, ILogger<Server> logger)
+        public Server(Config config,  CommandDispatcher commandDispatcher,Databases databases, IServiceScopeFactory scopeFactory, ILogger<Server> logger)
         {
             this.cfg = config;
             this.scopeFactory = scopeFactory;
@@ -47,7 +51,13 @@ namespace Netade.Server
             this.clientsLimit = new SemaphoreSlim(1, this.cfg.Limits.MaxClients);
             this.commandDispatcher = commandDispatcher;
             this.dbs = databases;
+            
+
+
+           
         }
+
+       
 
         // Resets the server by deleting the database if it is not running
         // Used for testing purposes
@@ -66,7 +76,9 @@ namespace Netade.Server
                 log.LogInformation("Cannot reset the server while it is running.");
             }
         }
-                
+
+      
+
         public bool SingleClient => this.cfg.SingleClient;
         public Databases Databases => dbs;
 
@@ -119,7 +131,7 @@ namespace Netade.Server
                 using (NetworkStream stream = client.GetStream())
                 {       
                     Command cmd = await GetCommandAsync(stream, cancellationToken);                       
-                    CommandResult commandResult = await ProcessCommandAsync(cmd);
+                    CommandResult commandResult = await ProcessCommandAsync(cmd, cancellationToken);
                     await RespondCommandAsync(stream, commandResult, cancellationToken);                    
                 }
                 
@@ -199,7 +211,7 @@ namespace Netade.Server
         }
 
 
-        private async Task<CommandResult> ProcessCommandAsync(Command cmd)
+        private async Task<CommandResult> ProcessCommandAsync(Command cmd, CancellationToken cancellationToken)
         {
             CommandResult commandResult = new CommandResult();
             if (cmd.ErrorMessage == null)
@@ -207,7 +219,7 @@ namespace Netade.Server
 
                 try
                 {
-                    commandResult = await commandDispatcher.DispatchAsync(cmd);
+                    commandResult = await commandDispatcher.DispatchAsync(cmd, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -294,7 +306,6 @@ namespace Netade.Server
                 try
                 {
                     Command cmd = Common.Serialization.ConvertCommandAndResult.DeSerializeCommand(dataReceived);
-
                     return cmd;
                 }
                 catch (Exception ex)
@@ -310,8 +321,9 @@ namespace Netade.Server
             dbs.Dispose();
         }
 
-        public bool Start()
+        public bool Start(HostControl hostControl)
         {
+            
             try
             {
                 if (!isRunning)
@@ -325,11 +337,23 @@ namespace Netade.Server
                         var seedData = scope.ServiceProvider.GetRequiredService<SeedData>();
                         seedData.SetDefault();   
                     }
-                    dbs.SyncDatabaseToFiles();
                     _cancellationTokenSource = new CancellationTokenSource();
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await dbs.SyncDatabaseToFilesAsync(_cancellationTokenSource.Token);
+                        }
+                        catch (Exception ex)
+                        {
+                            hostControl.Stop();
+                        }
+                    });
+                    
+                    
                     _listener = new TcpListener(IPAddress.Any, cfg.ListenPort);
                     _listener.Start();
-                    Console.WriteLine("Server started. Listening for connections...");
+                    log.LogInformation("Server started. Listening for connections...");
                     Task.Run(() => AcceptClientsAsync(_cancellationTokenSource.Token));
                     log.LogInformation("Completing Server Startup");
                     isRunning = true;
@@ -338,7 +362,8 @@ namespace Netade.Server
             }
             catch (Exception ex)
             {
-                Log.Error("Error in Server Startup",ex);
+               
+                log.LogError(ex, "Error in Server Startup");
                 return false;
             }
         }
@@ -352,8 +377,7 @@ namespace Netade.Server
                     log.LogInformation("Beginning Server Stop"); 
                     _cancellationTokenSource.Cancel();
                     _listener.Stop();
-                    dbs.DeactivateFileSystemWatcher();
-                    dbs.SyncDatabaseToFiles();                    
+                    dbs.DeactivateFileSystemWatcher();                                       
                     isRunning = false;
                     log.LogInformation("Completing Server Stop");
                 }
@@ -361,7 +385,7 @@ namespace Netade.Server
             }
             catch (Exception ex)
             {
-               Log.Error("Error in Server Stop",ex);
+               log.LogError(ex, "Error in Server Stop");
                 return false;
             }
         }
