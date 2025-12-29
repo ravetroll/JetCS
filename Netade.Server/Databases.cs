@@ -33,13 +33,12 @@ namespace Netade.Server
 
  
 
-        private static readonly ConcurrentDictionary<string, AsyncReaderWriterLock> locks =
-           new(StringComparer.OrdinalIgnoreCase);
-
         private FileSystemWatcher? databaseFileWatcher;
 
         private readonly ProviderDetectionService providerDetection;
         private ProviderDetectionResult providerDetectionResult;
+
+        private readonly DatabaseLockService databaseLockService;
 
 
         private readonly Channel<FsWork> fsWork =
@@ -54,23 +53,23 @@ namespace Netade.Server
 
 
 
-        public Databases(
-       Config config,
-       ProviderDetectionService providerDetection,
-       IDbContextFactory<NetadeDbContext> dbContextFactory,
-       ILogger<Databases> logger)
+       public Databases(
+           Config config,
+           ProviderDetectionService providerDetection,
+           DatabaseLockService databaseLockService,
+           IDbContextFactory<NetadeDbContext> dbContextFactory,
+           ILogger<Databases> logger)
         {
             this.config = config;
             this.dbContextFactory = dbContextFactory;
             this.logger = logger;
             this.providerDetection = providerDetection;
+            this.databaseLockService = databaseLockService;
 
             providerDetectionResult = ProviderDetectionResult.Fail(
                 "Provider detection has not been executed yet.");
 
             DetectProvider();
-
-            locks.TryAdd("", new AsyncReaderWriterLock());
 
             ActivateFileSystemWatcher();
         }
@@ -205,7 +204,7 @@ namespace Netade.Server
                     // 2) Your existing rename handling (now using normalized NewPath)
                     if (work.Kind is FsWorkKind.RenameOnly or FsWorkKind.RenameThenSync)
                     {
-                        await RenameDatabaseAsync(work.OldPath!, work.NewPath!, ct).ConfigureAwait(false);
+                        await UpdateDatabaseMetadataAfterFileRenameAsync(work.OldPath!, work.NewPath!, ct).ConfigureAwait(false);
                     }
 
                     // 3) Before syncing, normalize any other files that might have arrived without a path
@@ -213,7 +212,7 @@ namespace Netade.Server
                     if (work.Kind is FsWorkKind.SyncOnly or FsWorkKind.RenameThenSync)
                     {
                         await NormalizeAllIncomingDatabaseFilesAsync(ct).ConfigureAwait(false);
-                        await SyncDatabaseToFilesAsync(ct).ConfigureAwait(false);
+                        await SyncDatabaseMetadataToFilesAsync(ct).ConfigureAwait(false);
                     }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -376,7 +375,7 @@ namespace Netade.Server
 
         public void Dispose()
         {
-            locks.Clear();
+            
             DeactivateFileSystemWatcher();
         }
 
@@ -384,7 +383,7 @@ namespace Netade.Server
         // Rename
         // ----------------------------
 
-        public async Task<bool> RenameDatabaseAsync(string oldPath, string newPath, CancellationToken cancellationToken)
+        public async Task<bool> UpdateDatabaseMetadataAfterFileRenameAsync(string oldPath, string newPath, CancellationToken cancellationToken)
         {
             try
             {
@@ -420,7 +419,7 @@ namespace Netade.Server
                 db.FilePath = newPath;
                 dbContext.SaveChanges();
 
-                logger.LogInformation("Database file renamed: {NewPath}", newPath);
+                logger.LogInformation("Database file renamed in file system and synced to metadata: {NewPath}", newPath);
                 return true;
             }
             finally
@@ -434,10 +433,11 @@ namespace Netade.Server
         // Sync: read folder -> DB table
         // ----------------------------
 
-        public async Task SyncDatabaseToFilesAsync(CancellationToken cancellationToken)
+        public async Task SyncDatabaseMetadataToFilesAsync(CancellationToken cancellationToken)
         {
             try
             {
+                logger.LogInformation("Synchronizing database files to metadata...");
                 await using var _ = await EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
 
                 Directory.CreateDirectory(config.DatabasePath);
@@ -494,10 +494,11 @@ namespace Netade.Server
             }
             finally
             {
-                
+                logger.LogInformation("Synchronized database files to metadata");
             }
         }
 
+        // Database operations
 
         public async Task DeleteDatabaseAsync(string name, CancellationToken cancellationToken)
         {
@@ -505,8 +506,8 @@ namespace Netade.Server
 
             try
             {
-                await using var systemdb = await EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
-                await using var nameddb = await EnterWriteAsync(name, cancellationToken).ConfigureAwait(false);
+                await using var _ = await EnterWriteManyAsync(new[] { "", baseName }, cancellationToken).ConfigureAwait(false);
+
 
                 var accdbPath = GetFullPath(baseName, ".accdb");
                 var mdbPath = GetFullPath(baseName, ".mdb");
@@ -515,11 +516,11 @@ namespace Netade.Server
                 if (File.Exists(mdbPath)) File.Delete(mdbPath);
 
                 using var dbContext = dbContextFactory.CreateDbContext();
-                var db = dbContext.Databases.FirstOrDefault(t => t.Name == baseName);
+                var db = await dbContext.Databases.FirstOrDefaultAsync(t => t.Name == baseName);
                 if (db != null)
                 {
                     dbContext.Databases.Remove(db);
-                    dbContext.SaveChanges();
+                    await dbContext.SaveChangesAsync().ConfigureAwait(false);
                 }
             }
             finally
@@ -548,9 +549,9 @@ namespace Netade.Server
 
             try
             {
-                await using var systemdb = await EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
-                await using var nameddb = await EnterWriteAsync(name, cancellationToken).ConfigureAwait(false);
-                
+                await using var _ = await EnterWriteManyAsync(new[] { "", baseName }, cancellationToken).ConfigureAwait(false);
+
+
 
                 if (ResolveExistingDatabasePath(baseName) is not null)
                     throw new InvalidOperationException($"Database already exists: {baseName}");
@@ -603,14 +604,14 @@ namespace Netade.Server
                 creator.CreateDatabase(cs, version);
 
                 using var dbContext = dbContextFactory.CreateDbContext();
-                var db = dbContext.Databases.FirstOrDefault(t => t.Name == baseName);
+                var db = await dbContext.Databases.FirstOrDefaultAsync(t => t.Name == baseName);
 
                 if (db is null)
                     dbContext.Databases.Add(new Database { Name = baseName, FilePath = filePath });
                 else
                     db.FilePath = filePath;
 
-                dbContext.SaveChanges();
+                await dbContext.SaveChangesAsync().ConfigureAwait(false);
             }
             finally
             {
@@ -618,6 +619,69 @@ namespace Netade.Server
             }
 
         }
+
+        public async Task RenameDatabaseAsync(string oldName, string newName, CancellationToken cancellationToken)
+        {
+            var oldBase = NormalizeBaseNameOrThrow(oldName);
+            var newBase = NormalizeBaseNameOrThrow(newName);
+
+            if (string.Equals(oldBase, newBase, StringComparison.OrdinalIgnoreCase))
+                return; // no-op
+
+            // Cross-db locks to prevent deadlocks:
+            // System "" + both names (old + new). The lock service should order them deterministically.
+            await using var _ = await EnterWriteManyAsync(new[] { "", oldBase, newBase }, cancellationToken)
+                .ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Resolve the file we will rename. This already "prefers accdb over mdb".
+            var oldPath = ResolveExistingDatabasePath(oldBase);
+            if (oldPath is null)
+                throw new FileNotFoundException($"Database does not exist: {oldBase}");
+
+            // Prevent collisions (either accdb or mdb existing for the new name is a conflict)
+            if (ResolveExistingDatabasePath(newBase) is not null)
+                throw new InvalidOperationException($"Database already exists: {newBase}");
+
+            var ext = System.IO.Path.GetExtension(oldPath);
+            if (!IsSupportedDatabaseFileOrExtension(ext) || !IsExtensionUsableWithProvider(ext))
+                throw new NotSupportedException($"Cannot rename database with unsupported/unusable extension: {ext}");
+
+            var newPath = GetFullPath(newBase, ext);
+
+            // Ensure target directory exists
+            Directory.CreateDirectory(config.DatabasePath);
+
+            // 1) Rename file on disk
+            File.Move(oldPath, newPath);
+
+            // 2) Update metadata row
+            using var dbContext = dbContextFactory.CreateDbContext();
+
+            // Prefer lookup by Name; fallback to FilePath if needed
+            var db = await dbContext.Databases.FirstOrDefaultAsync(t => t.Name.ToLower() == oldBase.ToLower())
+                     ?? await dbContext.Databases.FirstOrDefaultAsync(t => t.FilePath.ToLower() == oldPath.ToLower());
+
+            if (db is null)
+            {
+                // If metadata row doesn't exist, create it so things remain consistent
+                dbContext.Databases.Add(new Database { Name = newBase, FilePath = newPath });
+            }
+            else
+            {
+                db.Name = newBase;
+                db.FilePath = newPath;
+            }
+
+            await dbContext.SaveChangesAsync().ConfigureAwait(false);
+
+            logger.LogInformation("Database renamed: {OldName} -> {NewName} ({OldPath} -> {NewPath})",
+                oldBase, newBase, oldPath, newPath);
+
+            
+        }
+
 
 
 
@@ -695,24 +759,6 @@ namespace Netade.Server
         }
 
 
-        public string CreateDatabaseConnectionString(string name)
-        {
-            var baseName = NormalizeBaseNameOrThrow(name);
-
-            // If it already exists, return empty (kept your semantics)
-            if (ResolveExistingDatabasePath(baseName) is not null)
-                return "";
-
-            var ext =
-                providerDetectionResult.CanCreateAccdb ? ".accdb" :
-                providerDetectionResult.CanCreateMdb ? ".mdb" :
-                throw new InvalidOperationException("Neither ACCDB nor MDB creation is available.");
-
-            var filePath = GetFullPath(baseName, ext);
-            return $"Provider={config.Provider};Data Source={filePath};";
-        }
-
-
         // ----------------------------
         // Locks
         // ----------------------------
@@ -721,15 +767,32 @@ namespace Netade.Server
 
         public ValueTask<AsyncReaderWriterLock.Releaser> EnterReadAsync(string databaseName, CancellationToken ct = default)
         {
-            var rw = locks.GetOrAdd(databaseName ?? "", _ => new AsyncReaderWriterLock());
-            return rw.EnterReadAsync(ct);
+            var key = NormalizeLockKey(databaseName);
+            return databaseLockService.GetLock(key).EnterReadAsync(ct);
         }
 
         public ValueTask<AsyncReaderWriterLock.Releaser> EnterWriteAsync(string databaseName, CancellationToken ct = default)
         {
-            var rw = locks.GetOrAdd(databaseName ?? "", _ => new AsyncReaderWriterLock());
-            return rw.EnterWriteAsync(ct);
+            var key = NormalizeLockKey(databaseName);
+            return databaseLockService.GetLock(key).EnterWriteAsync(ct);
         }
+
+        public ValueTask<IAsyncDisposable> EnterWriteManyAsync(IEnumerable<string> databaseNames, CancellationToken ct = default)
+        {
+            var keys = databaseNames.Select(NormalizeLockKey);
+            return databaseLockService.EnterWriteManyAsync(keys, ct);
+        }
+
+        public ValueTask<IAsyncDisposable> EnterReadManyAsync(IEnumerable<string> databaseNames, CancellationToken ct = default)
+        {
+            var keys = databaseNames.Select(NormalizeLockKey);
+            return databaseLockService.EnterReadManyAsync(keys, ct);
+        }
+
+
+        private static string NormalizeLockKey(string? name)
+            => string.IsNullOrWhiteSpace(name) ? "" : name.Trim();
+
 
 
         // ----------------------------

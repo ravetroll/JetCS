@@ -54,6 +54,7 @@ namespace Netade.ServerTest
                 .AddSingleton<Netade.Server.Server>()
                 .AddSingleton<CommandFactory>()
                 .AddSingleton<ProviderDetectionService>()
+                .AddSingleton<DatabaseLockService>()
                 .AddLogging(loggingBuilder =>
                 {
                     loggingBuilder.AddSerilog(new Serilog.LoggerConfiguration()

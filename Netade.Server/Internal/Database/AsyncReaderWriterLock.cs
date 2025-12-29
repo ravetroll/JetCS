@@ -262,14 +262,6 @@ namespace Netade.Server.Internal.Database
         }
     }
 
-    /// <summary>
-    /// Example per-database locker store (Option 2).
-    /// </summary>
-    public sealed class DatabaseLockManager
-    {
-       
-
-        
-    }
+   
 }
 

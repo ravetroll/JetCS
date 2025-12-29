@@ -61,6 +61,7 @@ try
         .AddSingleton<SeedData>()
         .AddSingleton<Server>()
         .AddSingleton<ProviderDetectionService>()
+        .AddSingleton<DatabaseLockService>()
         .AddSingleton<CommandFactory>()
         .AddLogging(loggingBuilder => 
         { 

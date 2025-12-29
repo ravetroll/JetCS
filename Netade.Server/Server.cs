@@ -342,11 +342,12 @@ namespace Netade.Server
                     {
                         try
                         {
-                            await dbs.SyncDatabaseToFilesAsync(_cancellationTokenSource.Token);
+                            await dbs.SyncDatabaseMetadataToFilesAsync(_cancellationTokenSource.Token);
                         }
                         catch (Exception ex)
                         {
                             hostControl.Stop();
+                            log.LogError(ex, "Error during SyncDatabaseToFilesAsync");
                         }
                     });
                     
