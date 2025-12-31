@@ -57,7 +57,7 @@ namespace Netade.Server.Commands
 
             try
             {
-                await using var _ = await databases.EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
+                await using var _ = await databases.EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
                 var dbcontext = databases.CreateDbContext();
                 Login? login = await dbcontext.Logins.FirstOrDefaultAsync(t => t.LoginName == commandString[2]);
                 if (login != null)
@@ -75,7 +75,7 @@ namespace Netade.Server.Commands
                     {
                         login.IsAdmin = false;
                     }
-                    commandResult.RecordCount = await dbcontext.SaveChangesAsync();
+                    await dbcontext.SaveChangesAsync();
                 }
                 else
                 {

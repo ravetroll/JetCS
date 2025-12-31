@@ -58,8 +58,7 @@ namespace Netade.Server.Commands
             {
                 // Databases.CreateDatabase(name, type) is the updated API you added
                 await databases.CreateDatabaseAsync(dbName, type, cancellationToken);
-
-                commandResult.RecordCount = 1;
+                
                 return commandResult;
             }
             catch (InvalidOperationException ex)

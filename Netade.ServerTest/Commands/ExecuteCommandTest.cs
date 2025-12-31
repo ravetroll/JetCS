@@ -84,7 +84,7 @@ namespace Netade.ServerTest.Commands
             cli.SendCommand("CREATE VIEW View1 AS SELECT 10");
             result = cli.SendCommand("EXECUTE Test");
             Assert.AreEqual("EXECUTE", result.CommandName);
-            Assert.AreEqual(1, result.RecordCount);
+            
         }
 
         

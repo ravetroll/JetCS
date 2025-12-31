@@ -172,7 +172,7 @@ namespace Netade.Server
                 if (response.Length > cfg.Limits.MaxCommandResultSizeBytes)
                 {
                     // Clear the large result and create error response
-                    commandResult.Result = null;
+                    commandResult.Data = null;
                     commandResult.ErrorMessage = $"Command result size exceeds {cfg.Limits.MaxCommandResultSizeBytes} bytes";
 
                     // Re-serialize the error response

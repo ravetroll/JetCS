@@ -61,7 +61,7 @@ namespace Netade.Server.Commands
             }
             try
             {
-                await using var _ = await databases.EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
+                await using var _ = await databases.EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
                 var dbcontext = databases.CreateDbContext();
                 var databaseAlreadyAssigned = await dbcontext.DatabaseLogins.FirstOrDefaultAsync(t => t.Database.Name.ToUpper() == commandString[2].ToUpper() && t.Login.LoginName.ToUpper() == commandString[3].ToUpper());
                 if (databaseAlreadyAssigned == null)
@@ -81,7 +81,7 @@ namespace Netade.Server.Commands
                         DatabaseLogin dbl = new DatabaseLogin() { Database = dbAssign, Login = loginAssign };
                         dbcontext.DatabaseLogins.Add(dbl);
                         await dbcontext.SaveChangesAsync();
-                        commandResult.RecordCount = 1;
+                        
                     }
 
                 }

@@ -63,7 +63,7 @@ namespace Netade.Server.Commands
             {
 
                 await databases.DeleteDatabaseAsync(commandString[2],cancellationToken);
-                commandResult.RecordCount = 1;
+                
             }
             else
             {

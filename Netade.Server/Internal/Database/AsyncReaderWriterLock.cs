@@ -1,30 +1,16 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-
-
-
-
 
 namespace Netade.Server.Internal.Database
 {
-    /// <summary>
-    /// Async-compatible reader/writer lock.
-    /// - Multiple concurrent readers
-    /// - Writers are exclusive
-    /// - Writers are given priority once any writer is waiting (prevents writer starvation)
-    /// </summary>
     public sealed class AsyncReaderWriterLock
     {
         private readonly object gate = new();
 
         private int activeReaders = 0;
         private bool activeWriter = false;
-
-        private int waitingWriters = 0;
 
         private readonly Queue<Waiter> waitingReadersQueue = new();
         private readonly Queue<Waiter> waitingWritersQueue = new();
@@ -33,15 +19,17 @@ namespace Netade.Server.Internal.Database
         {
             lock (gate)
             {
-                // Allow new readers only if no writer is active AND no writer is waiting.
-                // This ensures writers don't starve behind a constant stream of readers.
-                if (!activeWriter && waitingWriters == 0)
+                // writer-priority: if any writer is waiting, do not admit new readers
+                PruneCanceledHead(waitingWritersQueue);
+
+                if (!activeWriter && waitingWritersQueue.Count == 0)
                 {
                     activeReaders++;
                     return ValueTask.FromResult(new Releaser(this, ReleaserKind.Read));
                 }
 
-                return new ValueTask<Releaser>(EnqueueWaiter(waitingReadersQueue, ReleaserKind.Read, cancellationToken));
+                return new ValueTask<Releaser>(
+                    EnqueueWaiter(waitingReadersQueue, ReleaserKind.Read, cancellationToken));
             }
         }
 
@@ -55,15 +43,16 @@ namespace Netade.Server.Internal.Database
                     return ValueTask.FromResult(new Releaser(this, ReleaserKind.Write));
                 }
 
-                waitingWriters++;
-                return new ValueTask<Releaser>(EnqueueWaiter(waitingWritersQueue, ReleaserKind.Write, cancellationToken));
+                return new ValueTask<Releaser>(
+                    EnqueueWaiter(waitingWritersQueue, ReleaserKind.Write, cancellationToken));
             }
         }
 
         private Task<Releaser> EnqueueWaiter(Queue<Waiter> queue, ReleaserKind kind, CancellationToken ct)
         {
             var tcs = new TaskCompletionSource<Releaser>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var waiter = new Waiter(kind, tcs, ct);
+            var waiter = new Waiter(kind, tcs);
+
             queue.Enqueue(waiter);
 
             if (ct.CanBeCanceled)
@@ -71,17 +60,20 @@ namespace Netade.Server.Internal.Database
                 waiter.CancellationRegistration = ct.Register(static state =>
                 {
                     var w = (Waiter)state!;
-                    // Mark canceled and attempt to complete; removal from queue happens lazily.
-                    w.TryCancel();
+                    w.TryCancel(); // only cancels if still Pending
                 }, waiter);
             }
+
+            // If ct already canceled, ensure we cancel promptly.
+            if (ct.IsCancellationRequested)
+                waiter.TryCancel();
 
             return tcs.Task;
         }
 
         private void ExitRead()
         {
-            Waiter? toReleaseWriter = null;
+            Waiter? writerToGrant = null;
 
             lock (gate)
             {
@@ -90,28 +82,21 @@ namespace Netade.Server.Internal.Database
 
                 activeReaders--;
 
-                // If last reader left, a waiting writer (if any) gets priority.
                 if (activeReaders == 0)
                 {
-                    toReleaseWriter = DequeueNextNonCanceled(waitingWritersQueue, decrementWaitingWriters: true);
-                    if (toReleaseWriter != null)
-                    {
+                    writerToGrant = DequeueNextGrantable(waitingWritersQueue);
+                    if (writerToGrant != null)
                         activeWriter = true;
-                    }
-                    else
-                    {
-                        // No writers waiting; readers will be released by ExitWrite or future transitions.
-                    }
                 }
             }
 
-            toReleaseWriter?.Release(this);
+            writerToGrant?.Complete(this);
         }
 
         private void ExitWrite()
         {
-            List<Waiter>? toReleaseReaders = null;
-            Waiter? toReleaseWriter = null;
+            Waiter? writerToGrant = null;
+            List<Waiter>? readersToGrant = null;
 
             lock (gate)
             {
@@ -120,68 +105,75 @@ namespace Netade.Server.Internal.Database
 
                 activeWriter = false;
 
-                // Prefer writers first (prevents writer starvation).
-                toReleaseWriter = DequeueNextNonCanceled(waitingWritersQueue, decrementWaitingWriters: true);
-                if (toReleaseWriter != null)
+                writerToGrant = DequeueNextGrantable(waitingWritersQueue);
+                if (writerToGrant != null)
                 {
                     activeWriter = true;
                 }
                 else
                 {
-                    // No writers waiting: release ALL queued readers.
-                    toReleaseReaders = DequeueAllNonCanceled(waitingReadersQueue);
-                    if (toReleaseReaders != null)
-                    {
-                        activeReaders += toReleaseReaders.Count;
-                    }
+                    readersToGrant = DequeueAllGrantable(waitingReadersQueue);
+                    if (readersToGrant != null)
+                        activeReaders += readersToGrant.Count;
                 }
             }
 
-            // Complete outside lock.
-            if (toReleaseWriter != null)
+            if (writerToGrant != null)
             {
-                toReleaseWriter.Release(this);
+                writerToGrant.Complete(this);
                 return;
             }
 
-            if (toReleaseReaders != null)
+            if (readersToGrant != null)
             {
-                foreach (var r in toReleaseReaders)
-                    r.Release(this);
+                foreach (var r in readersToGrant)
+                    r.Complete(this);
             }
         }
 
-        private Waiter? DequeueNextNonCanceled(Queue<Waiter> queue, bool decrementWaitingWriters)
+        private static void PruneCanceledHead(Queue<Waiter> queue)
+        {
+            while (queue.Count > 0)
+            {
+                var w = queue.Peek();
+                if (!w.IsCanceled) break;
+
+                queue.Dequeue();
+                w.DisposeCancellationRegistration();
+            }
+        }
+
+        private static Waiter? DequeueNextGrantable(Queue<Waiter> queue)
         {
             while (queue.Count > 0)
             {
                 var w = queue.Dequeue();
-                if (w.IsCanceled)
+
+                // If it was canceled (or gets canceled), skip it.
+                if (!w.TryGrant())
                 {
-                    if (decrementWaitingWriters && w.Kind == ReleaserKind.Write)
-                        waitingWriters--;
                     w.DisposeCancellationRegistration();
                     continue;
                 }
 
-                if (decrementWaitingWriters && w.Kind == ReleaserKind.Write)
-                    waitingWriters--;
-
                 w.DisposeCancellationRegistration();
                 return w;
             }
+
             return null;
         }
 
-        private static List<Waiter>? DequeueAllNonCanceled(Queue<Waiter> queue)
+        private static List<Waiter>? DequeueAllGrantable(Queue<Waiter> queue)
         {
             if (queue.Count == 0) return null;
 
             List<Waiter>? list = null;
+
             while (queue.Count > 0)
             {
                 var w = queue.Dequeue();
-                if (w.IsCanceled)
+
+                if (!w.TryGrant())
                 {
                     w.DisposeCancellationRegistration();
                     continue;
@@ -190,6 +182,7 @@ namespace Netade.Server.Internal.Database
                 w.DisposeCancellationRegistration();
                 (list ??= new List<Waiter>()).Add(w);
             }
+
             return list;
         }
 
@@ -223,45 +216,40 @@ namespace Netade.Server.Internal.Database
 
         private sealed class Waiter
         {
+            // 0 = Pending, 1 = Granted, 2 = Canceled
+            private int state = 0;
+
             public ReleaserKind Kind { get; }
             public TaskCompletionSource<Releaser> Tcs { get; }
             public CancellationTokenRegistration CancellationRegistration { get; set; }
 
-            private int canceled = 0;
-            public bool IsCanceled => Volatile.Read(ref canceled) != 0;
+            public bool IsCanceled => Volatile.Read(ref state) == 2;
 
-            public Waiter(ReleaserKind kind, TaskCompletionSource<Releaser> tcs, CancellationToken ct)
+            public Waiter(ReleaserKind kind, TaskCompletionSource<Releaser> tcs)
             {
                 Kind = kind;
                 Tcs = tcs;
-
-                // If already canceled, mark immediately; we'll be skipped when dequeued.
-                if (ct.IsCancellationRequested) canceled = 1;
             }
+
+            public bool TryGrant()
+                => Interlocked.CompareExchange(ref state, 1, 0) == 0;
 
             public void TryCancel()
             {
-                if (Interlocked.Exchange(ref canceled, 1) == 0)
-                {
-                    // Try to complete as canceled; if it loses a race with Release, one will win.
+                if (Interlocked.CompareExchange(ref state, 2, 0) == 0)
                     Tcs.TrySetCanceled();
-                }
             }
 
-            public void Release(AsyncReaderWriterLock owner)
+            public void Complete(AsyncReaderWriterLock owner)
             {
-                // If canceled raced, this will fail and the lock slot was already accounted for.
-                // That’s OK because we avoid granting canceled waiters by skipping them on dequeue.
+                // At this point we must already be Granted.
                 Tcs.TrySetResult(new Releaser(owner, Kind));
             }
 
             public void DisposeCancellationRegistration()
             {
-                try { CancellationRegistration.Dispose(); } catch { /* ignore */ }
+                try { CancellationRegistration.Dispose(); } catch { }
             }
         }
     }
-
-   
 }
-

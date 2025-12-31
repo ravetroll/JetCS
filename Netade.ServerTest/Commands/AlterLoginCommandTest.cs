@@ -57,7 +57,7 @@ namespace Netade.ServerTest.Commands
             cli = ServerSetup.BuildNetadeClient("TEST1", "127.0.0.1", "user1", "password", server.CompressedMode);
             var result = cli.SendCommand("ALTER LOGIN admin password1 ADMIN");
             Assert.AreEqual("ALTER LOGIN", result.CommandName);
-            Assert.AreEqual(1, result.RecordCount);
+            
         }
 
         [TestMethod]
@@ -72,7 +72,7 @@ namespace Netade.ServerTest.Commands
             var alter =cli.SendCommand("ALTER LOGIN user1 password");
             Assert.AreEqual("ALTER LOGIN", alter.CommandName);
             var result = cli.SendCommand("CREATE DATABASE TEST2");            
-            Assert.AreEqual(1, result.RecordCount);
+            
         }
         [TestCleanup]
         public void Cleanup()

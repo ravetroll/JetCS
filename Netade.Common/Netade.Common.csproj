@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <PackageReference Include="EntityFrameworkCore.Jet.Data" Version="7.0.3" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Data.OleDb" Version="8.0.1" />
   </ItemGroup>
 

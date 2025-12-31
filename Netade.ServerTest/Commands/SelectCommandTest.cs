@@ -26,11 +26,19 @@ namespace Netade.ServerTest.Commands
             server = ServerSetup.BuildAndStartServer();
             var cli = ServerSetup.BuildNetadeClient("db", "127.0.0.1", server.CompressedMode);
             cli.SendCommand("CREATE DATABASE TEST1");
+
             cli = ServerSetup.BuildNetadeClient("TEST1", "127.0.0.1", server.CompressedMode);
+
             var result = cli.SendCommand("SELECT 10,20");
+
             Assert.AreEqual("SELECT", result.CommandName);
-            Assert.AreEqual(result.Result.Rows[0].ItemArray[0], 10);
+
+            var cell = result.Data.Rows[0][0];              // JsonNode?
+            var value = cell!.GetValue<int>();              // extracts 10 even if backed by JsonElement
+
+            Assert.AreEqual(10, value);
         }
+
 
         [TestMethod]
         public void NonExistentDatabaseTest()
@@ -84,7 +92,9 @@ namespace Netade.ServerTest.Commands
             cli = ServerSetup.BuildNetadeClient("TEST1", "127.0.0.1", "user1", "password", server.CompressedMode);
             var result = cli.SendCommand("SELECT 10,20");
             Assert.AreEqual("SELECT", result.CommandName);
-            Assert.AreEqual(result.Result.Rows[0].ItemArray[0], 10);
+            var cell = result.Data.Rows[0][0];              // JsonNode?
+            var value = cell!.GetValue<int>();              // extracts 10 even if backed by JsonElement
+            Assert.AreEqual(10, value);
         }
 
         [TestMethod]
@@ -100,7 +110,7 @@ namespace Netade.ServerTest.Commands
             cli.SendCommand("INSERT INTO Table1 VALUES ('value1', 40)");
             var result = cli.SendCommand("SELECT *, Now() AS timenow FROM Table1");
             Assert.AreEqual("SELECT", result.CommandName);
-            Assert.AreEqual(1,result.Result.Rows.Count);
+            Assert.AreEqual(1,result.Data?.Rows.Count);
         }
 
         [TestMethod]
@@ -115,7 +125,7 @@ namespace Netade.ServerTest.Commands
             cli.SendCommand("CREATE TABLE Table1 (field1 varchar, field2 int)");            
             var result = cli.SendCommand("SELECT * FROM Table1");
             Assert.AreEqual("SELECT", result.CommandName);
-            Assert.AreEqual(0, result.Result.Rows.Count);
+            Assert.AreEqual(0, result.Data?.Rows.Count);
         }
 
 

@@ -55,13 +55,13 @@ namespace Netade.Server.Commands
 
             try
             {
-                await using var _ = await databases.EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
+                await using var _ = await databases.EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
                 var dbcontext = databases.CreateDbContext();
                 Login? login = await dbcontext.Logins.FirstOrDefaultAsync(t => t.LoginName.ToLower() == commandString[2].ToLower());
                 if (login != null)
                 {
                     dbcontext.Logins.Remove(login);
-                    commandResult.RecordCount = dbcontext.SaveChanges();
+                    await dbcontext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {

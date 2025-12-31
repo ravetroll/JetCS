@@ -1,28 +1,39 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Netade.Common.Messaging
+﻿namespace Netade.Common.Messaging
 {
-    public class CommandResult
+    public enum CommandResultKind
     {
-        
-        public CommandResult() { }
+        None = 0,
+        Snapshot = 1,
+        CursorOpened = 2,
+        CursorPage = 3,
+        Ack = 4,
+        Error = 9
+    }
 
-        public CommandResult(string commandName) { CommandName = commandName; }
-        public DataTable? Result { get; set; }
-        public int RecordCount { get; set; }
-        public string? ErrorMessage { get; set; }
+    public sealed class CommandResult
+    {
+        public CommandResult() { }
+        public CommandResult(string? commandName) { CommandName = commandName; }
 
         public string? CommandName { get; set; }
 
+        public CommandResultKind Kind { get; set; } = CommandResultKind.None;
+
+        public string? ErrorMessage { get; set; }
+
+        // Snapshot OR page data:
+        public Rowset? Data { get; set; }
+
+        // Cursor metadata:
+        public string? CursorId { get; set; }
+        public bool? HasMore { get; set; }
+
         public CommandResult SetErrorMessage(string msg)
         {
-            this.ErrorMessage = msg;
+            Kind = CommandResultKind.Error;
+            ErrorMessage = msg;
             return this;
         }
     }
 }
+

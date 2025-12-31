@@ -38,7 +38,8 @@ namespace Netade.Server
         private readonly ProviderDetectionService providerDetection;
         private ProviderDetectionResult providerDetectionResult;
 
-        private readonly DatabaseLockService databaseLockService;
+        private readonly SystemLockService systemLockService;
+        private readonly DatabaseWriteGateService databaseWriteGateService;
 
 
         private readonly Channel<FsWork> fsWork =
@@ -56,7 +57,9 @@ namespace Netade.Server
        public Databases(
            Config config,
            ProviderDetectionService providerDetection,
-           DatabaseLockService databaseLockService,
+           SystemLockService systemLockService,
+           DatabaseWriteGateService databaseWriteGateService,
+
            IDbContextFactory<NetadeDbContext> dbContextFactory,
            ILogger<Databases> logger)
         {
@@ -64,8 +67,8 @@ namespace Netade.Server
             this.dbContextFactory = dbContextFactory;
             this.logger = logger;
             this.providerDetection = providerDetection;
-            this.databaseLockService = databaseLockService;
-
+            this.systemLockService = systemLockService;
+            this.databaseWriteGateService = databaseWriteGateService;
             providerDetectionResult = ProviderDetectionResult.Fail(
                 "Provider detection has not been executed yet.");
 
@@ -387,7 +390,7 @@ namespace Netade.Server
         {
             try
             {
-                await using var _ = await EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
+                await using var _ = await EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
 
                 // Only track supported types
                 if (!IsSupportedDatabaseFileOrExtension(newPath))
@@ -438,7 +441,7 @@ namespace Netade.Server
             try
             {
                 logger.LogInformation("Synchronizing database files to metadata...");
-                await using var _ = await EnterWriteAsync("", cancellationToken).ConfigureAwait(false);
+                await using var _ = await EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
 
                 Directory.CreateDirectory(config.DatabasePath);
                 var di = new DirectoryInfo(config.DatabasePath);
@@ -506,7 +509,8 @@ namespace Netade.Server
 
             try
             {
-                await using var _ = await EnterWriteManyAsync(new[] { "", baseName }, cancellationToken).ConfigureAwait(false);
+                await using var sys = await EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
+                await using var wg = await EnterDatabaseWriteAsync(baseName, cancellationToken).ConfigureAwait(false);
 
 
                 var accdbPath = GetFullPath(baseName, ".accdb");
@@ -549,8 +553,8 @@ namespace Netade.Server
 
             try
             {
-                await using var _ = await EnterWriteManyAsync(new[] { "", baseName }, cancellationToken).ConfigureAwait(false);
-
+                await using var sys = await EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
+                await using var wg = await EnterDatabaseWriteAsync(baseName, cancellationToken).ConfigureAwait(false);
 
 
                 if (ResolveExistingDatabasePath(baseName) is not null)
@@ -630,8 +634,8 @@ namespace Netade.Server
 
             // Cross-db locks to prevent deadlocks:
             // System "" + both names (old + new). The lock service should order them deterministically.
-            await using var _ = await EnterWriteManyAsync(new[] { "", oldBase, newBase }, cancellationToken)
-                .ConfigureAwait(false);
+            await using var sys = await EnterSystemWriteAsync(cancellationToken).ConfigureAwait(false);
+            await using var wg = await EnterDatabaseWriteManyAsync(new[] { oldBase, newBase }, cancellationToken).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -710,7 +714,7 @@ namespace Netade.Server
             Auth auth = new Auth();
             try
             {
-                await using var _ = await EnterReadAsync("", cancellationToken).ConfigureAwait(false);
+                
 
                 auth.LoginName = loginName;
                 // Create a fresh DbContext for this operation
@@ -765,33 +769,27 @@ namespace Netade.Server
 
 
 
-        public ValueTask<AsyncReaderWriterLock.Releaser> EnterReadAsync(string databaseName, CancellationToken ct = default)
+        public ValueTask<AsyncReaderWriterLock.Releaser> EnterSystemReadAsync(CancellationToken ct = default)
+            => systemLockService.EnterReadAsync(ct);
+
+        public ValueTask<AsyncReaderWriterLock.Releaser> EnterSystemWriteAsync(CancellationToken ct = default)
+            => systemLockService.EnterWriteAsync(ct);
+
+        public ValueTask<IAsyncDisposable> EnterDatabaseWriteAsync(string databaseName, CancellationToken ct = default)
         {
-            var key = NormalizeLockKey(databaseName);
-            return databaseLockService.GetLock(key).EnterReadAsync(ct);
+            var key = NormalizeDatabaseKey(databaseName);
+            return databaseWriteGateService.EnterWriteAsync(key, ct);
         }
 
-        public ValueTask<AsyncReaderWriterLock.Releaser> EnterWriteAsync(string databaseName, CancellationToken ct = default)
+        public ValueTask<IAsyncDisposable> EnterDatabaseWriteManyAsync(IEnumerable<string> databaseNames, CancellationToken ct = default)
         {
-            var key = NormalizeLockKey(databaseName);
-            return databaseLockService.GetLock(key).EnterWriteAsync(ct);
+            var keys = databaseNames.Select(NormalizeDatabaseKey);
+            return databaseWriteGateService.EnterWriteManyAsync(keys, ct);
         }
 
-        public ValueTask<IAsyncDisposable> EnterWriteManyAsync(IEnumerable<string> databaseNames, CancellationToken ct = default)
-        {
-            var keys = databaseNames.Select(NormalizeLockKey);
-            return databaseLockService.EnterWriteManyAsync(keys, ct);
-        }
-
-        public ValueTask<IAsyncDisposable> EnterReadManyAsync(IEnumerable<string> databaseNames, CancellationToken ct = default)
-        {
-            var keys = databaseNames.Select(NormalizeLockKey);
-            return databaseLockService.EnterReadManyAsync(keys, ct);
-        }
-
-
-        private static string NormalizeLockKey(string? name)
+        private static string NormalizeDatabaseKey(string? name)
             => string.IsNullOrWhiteSpace(name) ? "" : name.Trim();
+
 
 
 

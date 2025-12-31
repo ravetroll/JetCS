@@ -60,7 +60,7 @@ namespace Netade.Server.Commands
                     return commandResult.SetErrorMessage($"Invalid action '{action}' in '{Name}' Command:{cmd.CommandText}");
                 }
                 await databases.RenameDatabaseAsync(oldDatabaseName, newDatabaseName, cancellationToken);
-                commandResult.RecordCount = 1;
+                
                 return commandResult;
             }
             catch (Exception ex)

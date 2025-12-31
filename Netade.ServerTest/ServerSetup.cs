@@ -6,8 +6,10 @@ using Netade.Common.Serialization;
 using Netade.Domain;
 using Netade.Persistence;
 using Netade.Server;
+using Netade.Server.Internal.Cursors;
 using Netade.Server.Internal.Extensions;
 using Netade.Server.Services;
+using Netade.Server.Services.Interfaces;
 using Newtonsoft.Json;
 using Serilog;
 using System;
@@ -54,7 +56,9 @@ namespace Netade.ServerTest
                 .AddSingleton<Netade.Server.Server>()
                 .AddSingleton<CommandFactory>()
                 .AddSingleton<ProviderDetectionService>()
-                .AddSingleton<DatabaseLockService>()
+                .AddSingleton<SystemLockService>()
+                .AddSingleton<DatabaseWriteGateService>()                
+                .AddSingleton<ICursorRegistryService>(_ => new CursorRegistryService(idleTimeout: TimeSpan.FromMinutes(2), sweepInterval: TimeSpan.FromSeconds(15)))
                 .AddLogging(loggingBuilder =>
                 {
                     loggingBuilder.AddSerilog(new Serilog.LoggerConfiguration()

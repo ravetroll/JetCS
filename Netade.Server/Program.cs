@@ -1,19 +1,21 @@
 ﻿// See https://aka.ms/new-console-template for more information
-using Netade.Server;
-using Topshelf;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Netade.Common.Serialization;
 using Netade.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Netade.Server;
+using Netade.Server.Internal.Cursors;
+using Netade.Server.Internal.Extensions;
+using Netade.Server.Services;
+using Netade.Server.Services.Interfaces;
 using Serilog;
 using Serilog.Configuration;
 using Serilog.Events;
 using System.Configuration;
+using Topshelf;
 using Topshelf.Configurators;
-using Netade.Common.Serialization;
-using Netade.Server.Internal.Extensions;
-using Netade.Server.Services;
 
 
 
@@ -61,8 +63,10 @@ try
         .AddSingleton<SeedData>()
         .AddSingleton<Server>()
         .AddSingleton<ProviderDetectionService>()
-        .AddSingleton<DatabaseLockService>()
-        .AddSingleton<CommandFactory>()
+        .AddSingleton<SystemLockService>()
+        .AddSingleton<DatabaseWriteGateService>()
+        .AddSingleton<CommandFactory>()        
+        .AddSingleton<ICursorRegistryService>(_ => new CursorRegistryService(idleTimeout: TimeSpan.FromMinutes(2), sweepInterval: TimeSpan.FromSeconds(15)))
         .AddLogging(loggingBuilder => 
         { 
             loggingBuilder.ClearProviders();

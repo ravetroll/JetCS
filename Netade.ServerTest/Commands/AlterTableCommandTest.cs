@@ -92,7 +92,7 @@ namespace Netade.ServerTest.Commands
             cli.SendCommand("INSERT INTO Table1 VALUES ('value1', 'value2')");
             result = cli.SendCommand("SELECT * FROM Table1");
             
-            Assert.AreEqual(2, result.Result.Columns.Count);
+            Assert.AreEqual(2, result.Data?.Columns.Count);
         }
 
 

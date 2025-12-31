@@ -1,38 +1,30 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using EntityFrameworkCore.Jet.Data;
-
-namespace Netade.Common.Messaging
+﻿namespace Netade.Common.Messaging
 {
-    public class Command
+    public enum QueryResultMode
     {
-        public Command()
-        {
-            BuildCommand("NO CONNECTION", "NO COMMAND",null);
-        }    
+        Snapshot = 0, // return all rows (existing behavior)
+        Cursor = 1    // open cursor and return first page + cursor id
+    }
+
+    public sealed class Command
+    {
+        public Command() : this("NO CONNECTION", "NO COMMAND") { }
 
         public Command(string connString, string commandText)
         {
-
-            BuildCommand(connString, commandText, null);
-        }
-
-        private void BuildCommand(string connString, string commandText, string? errorMessage)
-        {
-            CommandText = commandText;
             ConnectionString = connString;
-            ErrorMessage = null;
+            CommandText = commandText;
         }
+
+        public string ConnectionString { get; set; } = "";
+        public string CommandText { get; set; } = "";
+
+        // NEW
+        public QueryResultMode ResultMode { get; set; } = QueryResultMode.Snapshot;
+
+        // NEW (used in cursor mode; also useful as “page size” if you later page snapshots)
+        public int FetchSize { get; set; } = 500;
 
         public string? ErrorMessage { get; set; }
-        public  string ConnectionString {  get; set; }
-        public string CommandText { get; set; }
-
-
-
     }
 }

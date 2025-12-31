@@ -138,9 +138,9 @@ static void RunCommand(string connStr, string dropStatement)
     result = cli.SendCommand(dropStatement);
     if (result.ErrorMessage == null)
     {
-        if (result.Result != null)
+        if (result.Data != null)
         {
-            Console.WriteLine(DataTableFormatter.DataTableToString(result.Result));
+            Console.WriteLine(RowsetFormatter.RowsetToString(result.Data));
         }
     }
     else
