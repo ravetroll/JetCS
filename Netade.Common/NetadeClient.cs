@@ -30,7 +30,7 @@ namespace Netade.Common
 
         public bool CompressedMode => compressedMode;
 
-        public CommandResult SendCommand(string command)
+        public CommandResult SendCommand(string command, CommandOptions? options = null)
         {
            
 
@@ -71,7 +71,7 @@ namespace Netade.Common
                 byte[] sendData;
                 try
                 {
-                    sendData = PrepareCommand(command);
+                    sendData = PrepareCommand(command, options);
                    
                 }
                 catch (Exception ex)
@@ -161,9 +161,9 @@ namespace Netade.Common
             return receivedData;
         }
 
-        private byte[] PrepareCommand(string command)
+        private byte[] PrepareCommand(string command, CommandOptions? options = null)
         {
-            Command cmd = new Command(csb.ToString(), command);
+            Command cmd = new Command(csb.ToString(), command, options);
             string cmdJson = Netade.Common.Serialization.ConvertCommandAndResult.SerializeCommand(cmd);
             byte[] data;
             if (compressedMode)

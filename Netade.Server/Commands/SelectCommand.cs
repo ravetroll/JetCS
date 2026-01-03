@@ -41,7 +41,7 @@ namespace Netade.Server.Commands
 
             try
             {
-                if (cmd.ResultMode == QueryResultMode.Snapshot)
+                if (cmd.Options.ResultMode == QueryResultMode.Snapshot)
                 {
                     var rowset = await ExecuteSnapshotAsync(connectionString, cmd.CommandText, cancellationToken)
                         .ConfigureAwait(false);
@@ -55,9 +55,10 @@ namespace Netade.Server.Commands
                 // Cursor mode: open cursor and return first page
                 var opened = await cursorRegistry.OpenCursorAsync(
                     databaseName: csb.Database,
+                    login: csb.Login,
                     connectionString: connectionString,
                     sql: cmd.CommandText,
-                    fetchSize: cmd.FetchSize,
+                    fetchSize: cmd.Options.FetchSize,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
 
                 result.Kind = CommandResultKind.CursorOpened;

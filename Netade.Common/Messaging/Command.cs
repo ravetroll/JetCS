@@ -1,30 +1,30 @@
 ﻿namespace Netade.Common.Messaging
 {
-    public enum QueryResultMode
-    {
-        Snapshot = 0, // return all rows (existing behavior)
-        Cursor = 1    // open cursor and return first page + cursor id
-    }
+   
+
+    
 
     public sealed class Command
     {
         public Command() : this("NO CONNECTION", "NO COMMAND") { }
 
-        public Command(string connString, string commandText)
+        public Command(string connString, string commandText, CommandOptions? options = null)
         {
             ConnectionString = connString;
             CommandText = commandText;
+            Options = options ?? new CommandOptions();
         }
 
         public string ConnectionString { get; set; } = "";
         public string CommandText { get; set; } = "";
 
-        // NEW
-        public QueryResultMode ResultMode { get; set; } = QueryResultMode.Snapshot;
+        // Unified options bag
+        public CommandOptions Options { get; set; } = new();
 
-        // NEW (used in cursor mode; also useful as “page size” if you later page snapshots)
-        public int FetchSize { get; set; } = 500;
-
+        // Keep ErrorMessage if you’re using it for client-side plumbing,
+        // but server results should generally carry errors in CommandResult.
         public string? ErrorMessage { get; set; }
+
+        
     }
 }

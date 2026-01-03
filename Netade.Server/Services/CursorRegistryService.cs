@@ -1,6 +1,8 @@
 ﻿using Netade.Common.Messaging;
+using Netade.Domain;
 using Netade.Server.Internal.Cursors;
 using Netade.Server.Services.Interfaces;
+using Serilog;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
@@ -9,12 +11,13 @@ using System.Text.Json.Nodes;
 
 namespace Netade.Server.Services
 {
-    public sealed class CursorRegistryService : ICursorRegistryService
+    public sealed class CursorRegistryService : ICursorRegistryService, IAsyncDisposable
     {
         private readonly ConcurrentDictionary<string, CursorState> _cursors = new();
-
+        private volatile bool _shuttingDown;
         private readonly TimeSpan _idleTimeout;
         private readonly TimeSpan _sweepInterval;
+        public int CursorCount => _cursors.Count; // for tests/diagnostics (or internal)
 
         private readonly CancellationTokenSource _disposeCts = new();
         private readonly Task _sweeper;
@@ -27,8 +30,11 @@ namespace Netade.Server.Services
             _sweeper = Task.Run(SweeperLoopAsync);
         }
 
+
+
         public async Task<CursorOpenResult> OpenCursorAsync(
             string databaseName,
+            string login,
             string connectionString,
             string sql,
             int fetchSize,
@@ -38,7 +44,7 @@ namespace Netade.Server.Services
 
             // Create cursor state first so we can guarantee cleanup on any failure.
             var cursorId = Guid.NewGuid().ToString("N");
-            var state = new CursorState(cursorId, databaseName);
+            var state = new CursorState(cursorId, databaseName,login);
 
             if (!_cursors.TryAdd(cursorId, state))
                 throw new InvalidOperationException("Failed to allocate cursor.");
@@ -81,12 +87,15 @@ namespace Netade.Server.Services
             }
         }
 
-        public async Task<CursorPageResult> FetchAsync(string cursorId, int fetchSize, CancellationToken cancellationToken)
+        public async Task<CursorPageResult> FetchAsync(string cursorId, string login, int fetchSize, CancellationToken cancellationToken)
         {
             if (fetchSize <= 0) fetchSize = 500;
 
             if (!_cursors.TryGetValue(cursorId, out var state))
                 throw new KeyNotFoundException($"Cursor not found: {cursorId}");
+
+            if (state.Login != login)
+                throw new UnauthorizedAccessException("Login does not match cursor owner.");
 
             state.Touch();
 
@@ -100,6 +109,7 @@ namespace Netade.Server.Services
 
                 if (!state.HasLookahead)
                 {
+                    state.Exhausted = true; // Mark the cursor as exhausted
                     return new CursorPageResult
                     {
                         Page = new Rowset { Columns = state.Columns, Rows = new List<JsonNode?[]>(), RecordCount = 0 },
@@ -108,6 +118,12 @@ namespace Netade.Server.Services
                 }
 
                 var page = await ReadPageAsync(state, fetchSize, cancellationToken).ConfigureAwait(false);
+
+                // Check if the fetched page indicates exhaustion
+                if (!page.HasMore)
+                {
+                    state.Exhausted = true; // Mark the cursor as exhausted
+                }
 
                 return new CursorPageResult
                 {
@@ -121,8 +137,17 @@ namespace Netade.Server.Services
             }
         }
 
-        public Task<bool> CloseAsync(string cursorId)
-            => CloseInternalAsync(cursorId);
+
+        public async Task<bool> CloseAsync(string cursorId, string login)
+        {
+            if (!_cursors.TryGetValue(cursorId, out var state))
+                throw new KeyNotFoundException($"Cursor not found: {cursorId}");
+
+            if (state.Login != login)
+                throw new UnauthorizedAccessException("Login does not match cursor owner.");
+            return await CloseInternalAsync(cursorId);
+        }
+
 
         public async ValueTask DisposeAsync()
         {
@@ -131,16 +156,52 @@ namespace Netade.Server.Services
             try { await _sweeper.ConfigureAwait(false); }
             catch { /* ignore */ }
 
-            var ids = _cursors.Keys.ToArray();
-            foreach (var id in ids)
-                await CloseInternalAsync(id).ConfigureAwait(false);
+            await CloseAllAsync(CancellationToken.None).ConfigureAwait(false);
 
             _disposeCts.Dispose();
         }
 
+        public async Task CloseAllAsync(CancellationToken cancellationToken = default)
+        {
+            _shuttingDown = true;
+
+            var states = _cursors.Values.ToArray();
+
+            // Close concurrently, but safely per-cursor using its Gate
+            await Task.WhenAll(states.Select(s => CloseCursorStateAsync(s, remove: true, cancellationToken)))
+                      .ConfigureAwait(false);
+        }
+
+
+
+
+
         // ---------------------------
         // Internals
         // ---------------------------
+
+
+        private async Task CloseCursorStateAsync(CursorState state, bool remove, CancellationToken cancellationToken)
+        {
+            await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (state.Closed) return;
+
+                state.Closed = true;
+
+                try { await state.Reader.DisposeAsync().ConfigureAwait(false); } catch { /* ignore/log */ }
+                try { state.Command.Dispose(); } catch { /* ignore/log */ }
+                try { await state.Connection.DisposeAsync().ConfigureAwait(false); } catch { /* ignore/log */ }
+
+                if (remove)
+                    _cursors.TryRemove(state.CursorId, out _);
+            }
+            finally
+            {
+                state.Gate.Release();
+            }
+        }
 
         private async Task SweeperLoopAsync()
         {
@@ -170,6 +231,8 @@ namespace Netade.Server.Services
 
         private async Task<bool> CloseInternalAsync(string cursorId)
         {
+            
+
             if (!_cursors.TryRemove(cursorId, out var state))
                 return false;
 
@@ -198,6 +261,8 @@ namespace Netade.Server.Services
 
         private static void ThrowIfClosed(CursorState state)
         {
+            if (state.Exhausted) 
+                throw new InvalidOperationException("Cursor has been exhausted and cannot be fetched from."); 
             if (state.IsClosed)
                 throw new ObjectDisposedException(nameof(CursorState), "Cursor is closed.");
             if (state.Reader is null)
@@ -324,19 +389,24 @@ namespace Netade.Server.Services
 
         private sealed class CursorState
         {
-            public CursorState(string cursorId, string databaseName)
+            public CursorState(string cursorId, string databaseName, string login)
             {
                 CursorId = cursorId;
                 DatabaseName = databaseName;
+                Login = login;
                 Touch();
             }
 
             public string CursorId { get; }
             public string DatabaseName { get; }
+            public string Login { get; }
 
             public OleDbConnection? Connection { get; set; }
             public OleDbCommand? Command { get; set; }
             public DbDataReader? Reader { get; set; }
+
+            public bool Exhausted { get; set; } = false; // Newly added
+            public bool Closed { get; set; } = false; // Keep track of cursor closure if needed
 
             public List<ColumnDef> Columns { get; set; } = new();
 
@@ -355,3 +425,4 @@ namespace Netade.Server.Services
         }
     }
 }
+

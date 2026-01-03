@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Netade.Server.Commands
 {
-    public sealed class CloseCommand : CommandBase
+    public sealed class CloseCommand : CommandBase, ICommand
     {
         private readonly ICursorRegistryService cursorRegistry;
 
@@ -16,7 +16,7 @@ namespace Netade.Server.Commands
         {
             this.cursorRegistry = cursorRegistry;
         }
-
+        public string Description => $"Netade {Name} Statement";
         public string Name => "CLOSE";
         public string[] Identifiers => [$"^{Name}"];
         public override bool DataChange => false;
@@ -24,6 +24,14 @@ namespace Netade.Server.Commands
         public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
         {
             var result = new CommandResult(Name);
+
+            var csb = new ConnectionStringBuilder(cmd.ConnectionString);
+            if (!csb.Initialized)
+                return result.SetErrorMessage($"Connection string {csb} format is incorrect");
+
+            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password, cancellationToken);
+            if (!auth.Authenticated || !auth.Authorized)
+                return result.SetErrorMessage(auth.StatusMessage);
 
             // CLOSE <cursorId>
             var parts = cmd.CommandText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -40,7 +48,7 @@ namespace Netade.Server.Commands
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var closed = await cursorRegistry.CloseAsync(cursorId).ConfigureAwait(false);
+                var closed = await cursorRegistry.CloseAsync(cursorId, csb.Login).ConfigureAwait(false);
                 if (!closed)
                     return result.SetErrorMessage("Cursor not found (maybe already closed).");
 
@@ -62,6 +70,11 @@ namespace Netade.Server.Commands
                 result.Kind = CommandResultKind.Ack;
                 result.CursorId = cursorId;
                 return result;
+            }
+            catch (Exception ex)
+            {
+                
+                return result.SetErrorMessage(ex.Message);
             }
         }
     }

@@ -21,6 +21,7 @@ using Topshelf.Logging;
 using Topshelf.Options;
 using Netade.Server.Services;
 using Topshelf;
+using Netade.Server.Services.Interfaces;
 
 namespace Netade.Server
 {
@@ -34,7 +35,7 @@ namespace Netade.Server
         private readonly IServiceScopeFactory scopeFactory;
         private readonly Config cfg;
         private readonly ILogger<Server> log;
-
+        private readonly ICursorRegistryService cursors;
         private Databases dbs;
         
         
@@ -43,7 +44,7 @@ namespace Netade.Server
         
 
         private SemaphoreSlim clientsLimit;
-        public Server(Config config,  CommandDispatcher commandDispatcher,Databases databases, IServiceScopeFactory scopeFactory, ILogger<Server> logger)
+        public Server(Config config, ICursorRegistryService cursors,  CommandDispatcher commandDispatcher,Databases databases, IServiceScopeFactory scopeFactory, ILogger<Server> logger)
         {
             this.cfg = config;
             this.scopeFactory = scopeFactory;
@@ -51,10 +52,8 @@ namespace Netade.Server
             this.clientsLimit = new SemaphoreSlim(1, this.cfg.Limits.MaxClients);
             this.commandDispatcher = commandDispatcher;
             this.dbs = databases;
-            
+            this.cursors = cursors;
 
-
-           
         }
 
        
@@ -378,7 +377,8 @@ namespace Netade.Server
                     log.LogInformation("Beginning Server Stop"); 
                     _cancellationTokenSource.Cancel();
                     _listener.Stop();
-                    dbs.DeactivateFileSystemWatcher();                                       
+                    dbs.DeactivateFileSystemWatcher();
+                    cursors.CloseAllAsync().Wait();
                     isRunning = false;
                     log.LogInformation("Completing Server Stop");
                 }

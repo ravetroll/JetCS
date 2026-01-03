@@ -12,6 +12,7 @@ namespace Netade.Server.Services.Interfaces
     {
         Task<CursorOpenResult> OpenCursorAsync(
             string databaseName,
+            string login,
             string connectionString,
             string sql,
             int fetchSize,
@@ -19,10 +20,12 @@ namespace Netade.Server.Services.Interfaces
 
         Task<CursorPageResult> FetchAsync(
             string cursorId,
+            string login,
             int fetchSize,
             CancellationToken cancellationToken);
 
-        Task<bool> CloseAsync(string cursorId);
+        Task<bool> CloseAsync(string cursorId, string login);
+        Task CloseAllAsync(CancellationToken cancellationToken = default);
     }
 }
 

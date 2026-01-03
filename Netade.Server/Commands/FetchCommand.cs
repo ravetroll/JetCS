@@ -1,5 +1,6 @@
 ﻿using Netade.Common;
 using Netade.Common.Messaging;
+using Netade.Server.Internal.Cursors;
 using Netade.Server.Services.Interfaces;
 using System;
 using System.Globalization;
@@ -8,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Netade.Server.Commands
 {
-    public sealed class FetchCommand : CommandBase
+    public sealed class FetchCommand : CommandBase, ICommand
     {
         private readonly ICursorRegistryService cursorRegistry;
 
@@ -17,14 +18,23 @@ namespace Netade.Server.Commands
         {
             this.cursorRegistry = cursorRegistry;
         }
-
+        public string Description => $"Netade {Name} Statement";
         public string Name => "FETCH";
         public string[] Identifiers => [$"^{Name}"];
         public override bool DataChange => false;
 
         public async Task<CommandResult> ExecuteAsync(Command cmd, CancellationToken cancellationToken)
         {
+
             var commandResult = new CommandResult(Name);
+
+            var csb = new ConnectionStringBuilder(cmd.ConnectionString);
+            if (!csb.Initialized)
+                return commandResult.SetErrorMessage($"Connection string {csb} format is incorrect");
+
+            var auth = await dbs.LoginWithDatabaseAsync(csb.Database, csb.Login, csb.Password, cancellationToken);
+            if (!auth.Authenticated || !auth.Authorized)
+                return commandResult.SetErrorMessage(auth.StatusMessage);
 
             // FETCH <cursorId> [COUNT <n>]
             var parts = cmd.CommandText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -51,9 +61,10 @@ namespace Netade.Server.Commands
                 count = Math.Clamp(count, 1, 5000);
             }
 
+            
             try
             {
-                var page = await cursorRegistry.FetchAsync(cursorId, count, cancellationToken).ConfigureAwait(false);
+                var page = await cursorRegistry.FetchAsync(cursorId, csb.Login, count, cancellationToken).ConfigureAwait(false);
 
                 return new CommandResult
                 {
@@ -68,9 +79,17 @@ namespace Netade.Server.Commands
             {
                 return commandResult.SetErrorMessage("Cursor not found (maybe already closed).");
             }
-            catch (ObjectDisposedException)
+            catch (ObjectDisposedException ex)
             {
-                return commandResult.SetErrorMessage("Cursor is closed.");
+                return commandResult.SetErrorMessage(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return commandResult.SetErrorMessage(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return commandResult.SetErrorMessage(ex.Message);
             }
         }
     }
