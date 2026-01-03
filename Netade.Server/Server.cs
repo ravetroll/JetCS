@@ -149,65 +149,58 @@ namespace Netade.Server
 
         private async Task RespondCommandAsync(NetworkStream stream, CommandResult commandResult, CancellationToken cancellationToken)
         {
-            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(cfg.Limits.CommandResultTimeout);
-            CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
+            using var ctsTimeOut = new CancellationTokenSource(cfg.Limits.CommandResultTimeout);
+            using var combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
 
             try
             {
                 string resultJson = Common.Serialization.ConvertCommandAndResult.SerializeCommandResult(commandResult);
-                byte[] response;
 
-                // Encode/compress first
-                if (this.cfg.CompressedMode)
-                {
-                    response = CompressionTools.CompressData(resultJson);
-                }
-                else
-                {
-                    response = Encoding.ASCII.GetBytes(resultJson);
-                }
+                byte[] payload = this.cfg.CompressedMode
+                    ? CompressionTools.CompressData(resultJson)
+                    : Encoding.ASCII.GetBytes(resultJson);
 
-                // Check size ONCE and handle if too large
-                if (response.Length > cfg.Limits.MaxCommandResultSizeBytes)
+                // Enforce max size based on payload length (not including 4-byte header)
+                if (payload.Length > cfg.Limits.MaxCommandResultSizeBytes)
                 {
-                    // Clear the large result and create error response
                     commandResult.Data = null;
                     commandResult.ErrorMessage = $"Command result size exceeds {cfg.Limits.MaxCommandResultSizeBytes} bytes";
 
-                    // Re-serialize the error response
                     resultJson = Common.Serialization.ConvertCommandAndResult.SerializeCommandResult(commandResult);
 
-                    if (this.cfg.CompressedMode)
-                    {
-                        response = CompressionTools.CompressData(resultJson);
-                    }
-                    else
-                    {
-                        response = Encoding.ASCII.GetBytes(resultJson);
-                    }
-                    
+                    payload = this.cfg.CompressedMode
+                        ? CompressionTools.CompressData(resultJson)
+                        : Encoding.ASCII.GetBytes(resultJson);
+
+                    // If even the error payload is too large, you may want a last-resort minimal payload here.
                 }
 
-                await stream.WriteAsync(response, 0, response.Length, combined.Token);
+                // 4-byte length prefix (big-endian)
+                int len = payload.Length;
+                byte[] header = new byte[4];
+                header[0] = (byte)((len >> 24) & 0xFF);
+                header[1] = (byte)((len >> 16) & 0xFF);
+                header[2] = (byte)((len >> 8) & 0xFF);
+                header[3] = (byte)(len & 0xFF);
+
+                await stream.WriteAsync(header, 0, header.Length, combined.Token);
+                await stream.WriteAsync(payload, 0, payload.Length, combined.Token);
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException)
             {
                 if (ctsTimeOut.IsCancellationRequested)
                 {
-                    log.LogError(new TimeoutException($"The RespondCommandAsync task timed out after {cfg.Limits.CommandResultTimeout} milliseconds."),null);
+                    log.LogError(
+                        new TimeoutException($"The RespondCommandAsync task timed out after {cfg.Limits.CommandResultTimeout} milliseconds."),
+                        null);
                 }
             }
             catch (Exception ex)
             {
-                log.LogError(ex,null);
-            }
-            finally
-            {
-                // Dispose of cancellation token sources
-                ctsTimeOut?.Dispose();
-                combined?.Dispose();
+                log.LogError(ex, null);
             }
         }
+
 
 
         private async Task<CommandResult> ProcessCommandAsync(Command cmd, CancellationToken cancellationToken)
@@ -233,86 +226,67 @@ namespace Netade.Server
             return commandResult;
         }
 
-        private  async Task<Command> GetCommandAsync(NetworkStream stream, CancellationToken cancellationToken)
+        private async Task<Command> GetCommandAsync(NetworkStream stream, CancellationToken cancellationToken)
         {
+            using var ctsTimeOut = new CancellationTokenSource(cfg.Limits.CommandTimeout);
+            using var combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
 
-            CancellationTokenSource ctsTimeOut = new CancellationTokenSource(cfg.Limits.CommandTimeout);
-            CancellationTokenSource combined = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ctsTimeOut.Token);
-            using (MemoryStream ms = new MemoryStream())
+            try
             {
-                // Receive response from server (optional)
-               
-                int bytesReadSum = 0;
-                byte[] receivedData = [];
-                string dataReceived;
-                try
-                {
-                    byte[] buffer = new 
-                    byte[1024];
-                    int bytesRead = 0;
-                    bool moreAvailable = true;
-                    
-                    while (moreAvailable && (bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, combined.Token)) > 0)
-                    {
+                // Read 4-byte length prefix (big-endian)
+                byte[] header = await ReadExactlyAsync(stream, 4, combined.Token);
+                int len =
+                    (header[0] << 24) |
+                    (header[1] << 16) |
+                    (header[2] << 8) |
+                    (header[3]);
 
-                        ms.Write(buffer, 0, bytesRead);
-                        bytesReadSum += bytesRead;
-                        moreAvailable = stream.DataAvailable;
-                        if (bytesReadSum > cfg.Limits.MaxCommandSizeBytes)
-                        {
-                            throw new InvalidDataException($"Command size exceeds {cfg.Limits.MaxCommandSizeBytes} bytes");
-                        }
-                    }
-                    receivedData = ms.ToArray();
-                } 
-                catch (OperationCanceledException ex)
-                {
-                    try
-                    {
-                        if (ctsTimeOut.IsCancellationRequested)
-                        {
-                            throw new TimeoutException($"The GetCommandAsync task timed out after {cfg.Limits.CommandTimeout} milliseconds.");
-                        }
+                if (len <= 0)
+                    return new Command() { ErrorMessage = "Invalid message length." };
 
+                if (len > cfg.Limits.MaxCommandSizeBytes)
+                    return new Command() { ErrorMessage = $"Command size exceeds {cfg.Limits.MaxCommandSizeBytes} bytes" };
 
-                    }
-                    catch (Exception ex2)
-                    {
-                        return new Command() { ErrorMessage = ex2.Message };
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return new Command() { ErrorMessage = ex.Message};
-                }
+                // Read payload exactly
+                byte[] payload = await ReadExactlyAsync(stream, len, combined.Token);
 
-                try
-                {
+                string dataReceived = this.cfg.CompressedMode
+                    ? CompressionTools.DecompressData(payload, payload.Length)
+                    : Encoding.ASCII.GetString(payload);
 
-                    if (this.cfg.CompressedMode)
-                    {
-                        dataReceived = CompressionTools.DecompressData(receivedData, bytesReadSum);
+                return Common.Serialization.ConvertCommandAndResult.DeSerializeCommand(dataReceived);
+            }
+            catch (OperationCanceledException)
+            {
+                if (ctsTimeOut.IsCancellationRequested)
+                    return new Command() { ErrorMessage = $"The GetCommandAsync task timed out after {cfg.Limits.CommandTimeout} milliseconds." };
 
-                    }
-                    else
-                    {
-                        dataReceived = Encoding.ASCII.GetString(receivedData);
-                    }
-                } catch (Exception ex)
-                {
-                    return new Command() { ErrorMessage = ex.Message };
-                }
-                try
-                {
-                    Command cmd = Common.Serialization.ConvertCommandAndResult.DeSerializeCommand(dataReceived);
-                    return cmd;
-                }
-                catch (Exception ex)
-                {
-                    return new Command() { ErrorMessage = ex.Message };
-                }
+                return new Command() { ErrorMessage = "Command receive cancelled." };
+            }
+            catch (Exception ex)
+            {
+                return new Command() { ErrorMessage = ex.Message };
             }
         }
+
+        // Helper (keep private inside Server class)
+        private static async Task<byte[]> ReadExactlyAsync(NetworkStream stream, int length, CancellationToken ct)
+        {
+            byte[] buffer = new byte[length];
+            int offset = 0;
+
+            while (offset < length)
+            {
+                int read = await stream.ReadAsync(buffer, offset, length - offset, ct);
+                if (read == 0)
+                    throw new EndOfStreamException("Remote closed the connection while reading.");
+
+                offset += read;
+            }
+
+            return buffer;
+        }
+
 
         public void Dispose()
         {

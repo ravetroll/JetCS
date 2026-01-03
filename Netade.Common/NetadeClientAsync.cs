@@ -1,57 +1,42 @@
 ﻿using Netade.Common.Helpers;
 using Netade.Common.Messaging;
-using Netade.Common.Serialization;
 using System;
-using System.Buffers;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
+using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Netade.Common
 {
-    public class NetadeClient
+    public sealed class NetadeClientAsync
     {
-        
         private readonly bool compressedMode;
-        private ConnectionStringBuilder csb;
-        
+        private readonly ConnectionStringBuilder csb;
 
-        public NetadeClient(string connection, bool compressedMode)
+        public NetadeClientAsync(string connection, bool compressedMode)
         {
             csb = new ConnectionStringBuilder(connection);
-            
             this.compressedMode = compressedMode;
-            
-
         }
 
         public bool CompressedMode => compressedMode;
 
-        public CommandResult SendCommand(string command, CommandOptions? options = null)
+        public async Task<CommandResult> SendCommandAsync(
+            string command,
+            CommandOptions? options = null,
+            CancellationToken cancellationToken = default)
         {
             if (!csb.Initialized)
                 return new CommandResult() { ErrorMessage = "ConnectionString not initialized" };
 
-            TcpClient client;
+            TcpClient client = new TcpClient();
             try
             {
-                client = new TcpClient(csb.Server, csb.Port);
-            }
-            catch (SocketException ex)
-            {
-                return new CommandResult() { ErrorMessage = $"Unable to connect to server: {ex.Message}" };
-            }
-            catch (Exception ex)
-            {
-                return new CommandResult() { ErrorMessage = $"An error occurred: {ex.Message}" };
-            }
+                await client.ConnectAsync(csb.Server, csb.Port, cancellationToken).ConfigureAwait(false);
 
-            try
-            {
-                using NetworkStream stream = client.GetStream();
+                await using NetworkStream stream = client.GetStream();
 
                 // Payload
                 byte[] payload = PrepareCommand(command, options);
@@ -65,14 +50,23 @@ namespace Netade.Common
                 header[3] = (byte)(len & 0xFF);
 
                 // Send header + payload
-                stream.Write(header, 0, header.Length);
-                stream.Write(payload, 0, payload.Length);
+                await stream.WriteAsync(header, 0, header.Length, cancellationToken).ConfigureAwait(false);
+                await stream.WriteAsync(payload, 0, payload.Length, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
                 // Receive response payload using header framing
-                byte[] receivedPayload = ReceiveResult(stream);
+                byte[] receivedPayload = await ReceiveResultAsync(stream, cancellationToken).ConfigureAwait(false);
 
                 // Decode/deserialize
                 return BuildResponse(receivedPayload, receivedPayload.Length);
+            }
+            catch (OperationCanceledException)
+            {
+                return new CommandResult() { ErrorMessage = "Command cancelled." };
+            }
+            catch (SocketException ex)
+            {
+                return new CommandResult() { ErrorMessage = $"Unable to connect to server: {ex.Message}" };
             }
             catch (Exception ex)
             {
@@ -80,14 +74,15 @@ namespace Netade.Common
             }
             finally
             {
-                client.Close();
+                try { client.Close(); } catch { /* ignore */ }
             }
         }
 
-        private static byte[] ReceiveResult(NetworkStream stream)
+        private async Task<byte[]> ReceiveResultAsync(NetworkStream stream, CancellationToken cancellationToken)
         {
             // Read 4-byte header
-            byte[] header = ReadExactly(stream, 4);
+            byte[] header = await ReadExactlyAsync(stream, 4, cancellationToken).ConfigureAwait(false);
+
             int len =
                 (header[0] << 24) |
                 (header[1] << 16) |
@@ -98,18 +93,19 @@ namespace Netade.Common
                 throw new InvalidDataException("Invalid message length.");
 
             // Read payload exactly
-            return ReadExactly(stream, len);
+            return await ReadExactlyAsync(stream, len, cancellationToken).ConfigureAwait(false);
         }
 
-        // Helper (keep private inside NetadeClient)
-        private static byte[] ReadExactly(NetworkStream stream, int length)
+        private static async Task<byte[]> ReadExactlyAsync(NetworkStream stream, int length, CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[length];
             int offset = 0;
 
             while (offset < length)
             {
-                int read = stream.Read(buffer, offset, length - offset);
+                int read = await stream.ReadAsync(buffer, offset, length - offset, cancellationToken)
+                                       .ConfigureAwait(false);
+
                 if (read == 0)
                     throw new EndOfStreamException("Remote closed the connection while reading.");
 
@@ -119,43 +115,13 @@ namespace Netade.Common
             return buffer;
         }
 
-
-
         private CommandResult BuildResponse(byte[] receivedData, int bytesReadSum)
         {
-            string dataReceived;
-            if (compressedMode)
-            {
-                dataReceived = CompressionTools.DecompressData(receivedData, bytesReadSum);
+            string dataReceived = compressedMode
+                ? CompressionTools.DecompressData(receivedData, bytesReadSum)
+                : Encoding.ASCII.GetString(receivedData);
 
-            }
-            else
-            {
-                dataReceived = Encoding.ASCII.GetString(receivedData);
-            }
-            CommandResult result = Netade.Common.Serialization.ConvertCommandAndResult.DeSerializeCommandResult(dataReceived);
-            //result.Result = RemoveEmptyRow(result.Result);
-            return result;
-        }
-
-        private static byte[] ReceiveResult(ref int bytesReadSum, NetworkStream stream)
-        {
-            byte[] receivedData;
-            
-            using (MemoryStream ms = new MemoryStream())
-            {
-                StringBuilder responseData = new StringBuilder();
-                byte[] buffer = new byte[1024];
-                int bytesRead;
-                while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)
-                {
-                    bytesReadSum += bytesRead;
-                    ms.Write(buffer, 0, bytesRead);
-                }
-                receivedData = ms.ToArray();
-            }
-            
-            return receivedData;
+            return Netade.Common.Serialization.ConvertCommandAndResult.DeSerializeCommandResult(dataReceived);
         }
 
         private byte[] PrepareCommand(string command, CommandOptions? options = null)
@@ -168,9 +134,8 @@ namespace Netade.Common
                 : Encoding.ASCII.GetBytes(cmdJson);
         }
 
-
-        //  Would rather do this via a custom Jsonconverter but just can't make it work right now
-        static DataTable? RemoveEmptyRow(DataTable? t)
+        // Retained from sync version (if you still need it somewhere)
+        private static DataTable? RemoveEmptyRow(DataTable? t)
         {
             if (t != null)
             {
@@ -188,7 +153,5 @@ namespace Netade.Common
             }
             return null;
         }
-
-
     }
 }
